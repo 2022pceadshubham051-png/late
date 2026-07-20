@@ -4,7 +4,7 @@ import random
 import sqlite3
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, TypeHandler, filters, ContextTypes
 from telegram.constants import ParseMode
 from telegram.error import TelegramError, Forbidden, BadRequest
 from collections import defaultdict
@@ -14,13 +14,172 @@ from typing import Union
 # Import necessary classes for media handling
 from telegram import InputMediaAnimation, InputMediaPhoto
 
-# 🎨 Premium UI/UX layer (Cricoverse-style presentation, no gameplay logic)
-from ui_helpers import (
-    mention, build_card, branch_lines, pack_buttons, ACTION_LABELS, build_map_grid, CELL_ICONS,
-    col_letter, direction_arrow, build_locator_lines, battle_log_line, status_bar,
-    safe_zone_warning, cosmic_event_banner, movement_confirmation, TEAM_STATUS_ICON,
-    urgency_banner,
-)
+# 🎨 ======================== PREMIUM UI/UX LAYER ======================== 🎨
+# (Cricoverse-style presentation helpers — merged in from ui_helpers.py,
+#  kept as a self-contained block so it's easy to find/edit as one unit)
+
+# ---------- ICONS / LABELS ----------
+
+ACTION_LABELS = {
+    "attack": "⚔️ Attack",
+    "defend": "🛡️ Defend",
+    "heal": "🔧 Repair",
+    "move": "🧭 Move",
+    "ally": "🤝 Ally",
+    "betray": "🗡️ Betray",
+    "inventory": "🎒 Inventory",
+    "spectate": "👁️ Spectate",
+}
+
+CELL_ICONS = {
+    "self": "🟢",
+    "enemy": "🔴",
+    "loot": "🟡",
+    "safe": "🟦",
+    "destroyed": "⬛",
+    "unknown": "⬜",
+}
+
+TEAM_STATUS_ICON = {
+    "alpha": "🔵",
+    "beta": "🔴",
+    "alive": "🟢",
+    "dead": "💀",
+    "afk": "⏳",
+}
+
+# ---------- NAME CACHE (so mention() can show real names) ----------
+
+_NAME_CACHE = {}
+
+
+def register_name(user_id: int, name: str) -> None:
+    """Remembers a player's display name so mention() can use it later
+    even when only a user_id is available at the call site."""
+    if user_id and name:
+        _NAME_CACHE[int(user_id)] = name
+
+
+def mention(user_id: int, name: str | None = None) -> str:
+    """HTML mention link. Uses the given name, else the cached name for
+    this user_id, else falls back to 'Captain'."""
+    label = name or _NAME_CACHE.get(int(user_id)) or "Captain"
+    return f'<a href="tg://user?id={user_id}">{label}</a>'
+
+
+def col_letter(index: int) -> str:
+    """0 -> A, 1 -> B, ... 25 -> Z, 26 -> AA, etc."""
+    index = int(index)
+    letters = ""
+    index += 1
+    while index > 0:
+        index, rem = divmod(index - 1, 26)
+        letters = chr(65 + rem) + letters
+    return letters
+
+
+def direction_arrow(d_row: int, d_col: int) -> str:
+    """Returns an arrow icon pointing roughly toward (d_row, d_col)."""
+    if d_row == 0 and d_col == 0:
+        return "⚪"
+    if abs(d_row) >= 2 * abs(d_col):
+        return "⬇️" if d_row > 0 else "⬆️"
+    if abs(d_col) >= 2 * abs(d_row):
+        return "➡️" if d_col > 0 else "⬅️"
+    if d_row > 0 and d_col > 0:
+        return "↘️"
+    if d_row > 0 and d_col < 0:
+        return "↙️"
+    if d_row < 0 and d_col > 0:
+        return "↗️"
+    return "↖️"
+
+
+# ---------- CARD / LIST BUILDERS ----------
+
+
+def build_card(title: str, lines: list, emoji: str = "🎴") -> str:
+    """Builds an HTML-formatted 'card' block used throughout the bot."""
+    header = f"{emoji} <b>{title}</b>\n" + "─" * 20 + "\n"
+    body = "\n".join(str(line) for line in lines)
+    return header + body
+
+
+def branch_lines(items: list) -> list:
+    """Renders a list of strings as a tree-branch structure (├─ / └─)."""
+    items = list(items)
+    rendered = []
+    for i, item in enumerate(items):
+        prefix = "└─ " if i == len(items) - 1 else "├─ "
+        rendered.append(f"{prefix}{item}")
+    return rendered
+
+
+def pack_buttons(buttons: list, per_row: int = 2) -> InlineKeyboardMarkup:
+    """Chunks a flat list of InlineKeyboardButtons into rows of `per_row`."""
+    rows = [buttons[i:i + per_row] for i in range(0, len(buttons), per_row)]
+    return InlineKeyboardMarkup(rows)
+
+
+def build_map_grid(size: int, cell_state_fn, callback_prefix: str = "shipmap") -> InlineKeyboardMarkup:
+    """Builds a clickable inline-button grid. cell_state_fn(r, c) -> state key in CELL_ICONS."""
+    rows = []
+    for r in range(size):
+        row = []
+        for c in range(size):
+            state = cell_state_fn(r, c)
+            icon = CELL_ICONS.get(state, CELL_ICONS["unknown"])
+            row.append(InlineKeyboardButton(icon, callback_data=f"{callback_prefix}:{r}:{c}"))
+        rows.append(row)
+    return InlineKeyboardMarkup(rows)
+
+
+def build_locator_lines(nearby: list) -> list:
+    """
+    nearby: list of dicts with keys 'user_id', 'distance', 'd_row', 'd_col'
+    (as produced by the /position handler).
+    """
+    lines = []
+    for entry in nearby:
+        arrow = direction_arrow(entry.get("d_row", 0), entry.get("d_col", 0))
+        lines.append(f"  {arrow} {mention(entry['user_id'])} — {entry['distance']} sectors away")
+    return lines
+
+
+def status_bar(hp, max_hp, shield, cargo, sector) -> str:
+    """One-line status summary, e.g. HP / shield / cargo / sector."""
+    hp_part = f"❤️ HP: {hp}" if not max_hp else f"❤️ HP: {hp}/{max_hp}"
+    shield_part = f"🛡️ {shield}" if shield not in (None, "-", "") else "🛡️ —"
+    return f"{hp_part}   {shield_part}   🎒 {cargo}   📍 {sector}"
+
+
+def battle_log_line(icon: str, text: str) -> str:
+    """Formats a single battle-log entry line."""
+    return f"  {icon} {text}"
+
+
+def safe_zone_warning(text: str) -> str:
+    return f"🟥 <b>DANGER ZONE WARNING</b>\n{text}"
+
+
+def cosmic_event_banner(name: str, desc: str, emoji: str = "🌌") -> str:
+    return build_card("COSMIC EVENT", [f"{emoji} <b>{name}</b>", desc], emoji=emoji)
+
+
+def movement_confirmation(user_id: int, x: int, y: int) -> str:
+    return f"🧭 {mention(user_id)} confirmed course to {col_letter(y)}{x + 1}."
+
+
+def urgency_banner(user_id: int, seconds_left, message: str) -> str:
+    """Used in reminders, e.g. 'Submit your orders or risk an AFK strike!'"""
+    try:
+        secs = int(seconds_left)
+        time_part = f"{secs}s left"
+    except (TypeError, ValueError):
+        time_part = str(seconds_left)
+    return f"⏰ {mention(user_id)} — {message} ({time_part})"
+
+# ======================================================================== #
 
 # ✨ --- Logging Setup --- ✨
 # Configure logging for debugging and monitoring
@@ -1537,15 +1696,16 @@ def build_sea_selection_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-async def send_dm_registration_alert(context: ContextTypes.DEFAULT_TYPE, chat_id: int, first_name: str):
+async def send_dm_registration_alert(context: ContextTypes.DEFAULT_TYPE, chat_id: int, first_name: str, user_id: int = None):
     """Sent inside a GROUP when an unregistered player tries to join a game there."""
     bot_link_username = context.bot.username or BOT_USERNAME
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("📡 Start in DM", url=f"https://t.me/{bot_link_username}?start=register")
     ]])
+    tag = mention(user_id, first_name) if user_id else escape_markdown_value(first_name)
     await safe_send(
         context, chat_id,
-        f"⚠️ {escape_markdown_value(first_name)}, please go to my DM and press <b>/start</b> first "
+        f"⚠️ {tag}, please go to my DM and press <b>/start</b> first "
         f"to choose your origin Sea before you can join a battle here!",
         reply_markup=keyboard, parse_mode=ParseMode.HTML
     )
@@ -1558,7 +1718,7 @@ async def require_registration(update: Update, context: ContextTypes.DEFAULT_TYP
     # If this call came from a button press, answer with an alert too
     if update.callback_query:
         await update.callback_query.answer("⚠️ Please start the bot in DM and choose your Sea first!", show_alert=True)
-    await send_dm_registration_alert(context, chat_id, first_name)
+    await send_dm_registration_alert(context, chat_id, first_name, user_id)
     return False
 
 
@@ -2381,11 +2541,8 @@ Commands related to your overall progress and bot-wide interactions.
 Configure game rules for groups (Group Admins) or manage the bot (Owner).
 
 <b>Group Admin Commands:</b>
-- /settings : Show current settings for this group.
-- /setjointime <code><secs></code>: Set join phase duration (30-600s).
-- /setoptime <code><secs></code>: Set action phase duration (30-600s).
-- /setminplayers <code><num></code>: Set minimum players to start (2-10).
-- /setspectate <code><1|0></code>: Allow (1) or disallow (0) spectators.
+- /settings : Open the settings panel (tap buttons to change join time, action time, min players, spectators).
+- /tutorial : Step-by-step guide on how to play.
 - /extend : Add 30 seconds to the current join timer.
 - /endgame : Immediately terminate the current game in this group.
 
@@ -2500,6 +2657,50 @@ async def help_main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ Unexpected error editing back to main help: {e}", exc_info=True)
 
 # --- 📜 Rules Command ---
+async def tutorial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Step-by-step guide for brand new Captains on how to actually play."""
+    user = update.effective_user
+    chat_id = update.effective_chat.id
+
+    if is_globally_banned(user.id): return
+    if check_spam(user.id):
+        await safe_send(context, chat_id, "⏳ Please wait a moment before commands.")
+        return
+
+    sep = "🧭 • ⋅ ⋅ ────────── ⋅ ⋅ • 🧭"
+
+    tutorial_text = f"""
+🧭 <b>Captain's Tutorial — Getting Started</b> 🧭
+
+{sep}
+
+<b>Step 1 — Register in DM</b>
+Message me directly and send /start. Pick your origin Sea (Storm, Emerald, Crimson, or Abyss). This is one-time and permanent.
+
+<b>Step 2 — Join a battle</b>
+In any group with the bot, use /creategame (or wait for one) then tap <b>Join Battle</b> or send /join before the timer runs out.
+
+<b>Step 3 — Issue daily orders (in DM!)</b>
+Once the game starts, I'll DM you a command console each day. Tap a button to choose:
+  ⚔️ Attack · 🛡️ Defend · 🔧 Repair · 🎒 Loot · 🧭 Move
+You get one action per day — pick wisely before the timer runs out.
+
+<b>Step 4 — Track the battle</b>
+  /map — see the interactive battle grid (DM only)
+  /position — check your sector & nearby ships
+  /myhp — check your health (DM only)
+  /inventory — see items you've looted
+
+<b>Step 5 — Survive & win</b>
+The safe zone shrinks over time — staying outside it deals damage. Be the last ship standing (or last team alive in Team Mode) to win coins, XP, and glory!
+
+{sep}
+
+Need the full rules? Use /rules. Need the full command list? Use /help.
+"""
+    await safe_send(context, chat_id, tutorial_text, parse_mode=ParseMode.HTML)
+
+
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays the core game rules with a fancy UI."""
     user = update.effective_user
@@ -4716,6 +4917,11 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
         player = game.players[user_id]
         player['stats']['loots'] = player['stats'].get('loots', 0) + 1
 
+        # 🎲 50% chance to find anything at all when scavenging a sector
+        if random.random() >= 0.5:
+            loot_log.append(f"  ❓ {mention(user_id)} found nothing of value.")
+            continue
+
         # Determine item rarity based on weights
         rarity_choices = [r for r, w in RARITY_WEIGHTS.items() for _ in range(w)]
         chosen_rarity = random.choice(rarity_choices)
@@ -5595,24 +5801,50 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # 🛡️ ======================== ADMIN & SETTINGS COMMANDS (Fancy UI) ======================== 🛡️
 
-async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Displays current game settings for the group (Group Admin)."""
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
+# 🛡️ ======================== ADMIN & SETTINGS COMMANDS (Fancy UI) ======================== 🛡️
 
-    if update.effective_chat.type == 'private':
-        await safe_send(context, chat_id, "⚙️ This command is for group chats only.")
-        return
-    if not await is_admin_or_owner(context, chat_id, user_id):
-        await safe_send(context, chat_id, "🚫 Access Denied: You need Group Admin rights.")
-        return
+def get_group_settings(chat_id: int) -> dict:
+    """Loads group-specific game settings from the database (standalone helper, no Game instance needed)."""
+    defaults = {'join_time': 120, 'operation_time': 120, 'min_players': 2, 'max_players': 20, 'allow_spectators': 1}
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('SELECT join_time, operation_time, min_players, max_players, allow_spectators FROM group_settings WHERE chat_id = ?', (chat_id,))
+        row = cursor.fetchone()
+        if row:
+            return {'join_time': row[0], 'operation_time': row[1], 'min_players': row[2], 'max_players': row[3], 'allow_spectators': row[4]}
+    except sqlite3.Error as e:
+        logger.error(f"❌ DB Error loading settings for chat {chat_id}: {e}")
+    finally:
+        if conn: conn.close()
+    return defaults
 
-    # Load current settings using the Game class's helper
-    temp_game = Game(chat_id, 0, "") # Create temp instance just to load settings
-    settings = temp_game.settings
+
+def update_group_setting(chat_id: int, field: str, value) -> bool:
+    """Updates a single group_settings column. `field` must be one of the whitelisted columns below."""
+    allowed_fields = {'join_time', 'operation_time', 'min_players', 'allow_spectators'}
+    if field not in allowed_fields:
+        logger.error(f"❌ Rejected update_group_setting for disallowed field '{field}'.")
+        return False
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('INSERT OR IGNORE INTO group_settings (chat_id) VALUES (?)', (chat_id,))
+        cursor.execute(f'UPDATE group_settings SET {field} = ? WHERE chat_id = ?', (value, chat_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        logger.error(f"❌ DB Error updating '{field}' for chat {chat_id}: {e}")
+        return False
+    finally:
+        if conn: conn.close()
+
+
+def build_settings_text(settings: dict) -> str:
     fancy_separator = "⚙️ • ⋅ ⋅ ────────── ⋅ ⋅ • ⚙️"
-
-    settings_text = f"""
+    return f"""
     ⚙️ <b>Group Game Settings</b> ⚙️
 
     Current configuration for battles in this chat:
@@ -5631,154 +5863,127 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     {fancy_separator}
 
-    Use commands like <code>/setjointime</code>, <code>/setoptime</code>, <code>/setminplayers</code>, <code>/setspectate</code> to modify.
+    Tap a button below to change a setting.
     """
-    await safe_send(context, chat_id, settings_text, parse_mode=ParseMode.HTML)
 
 
-async def setjointime_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sets the joining phase duration (Group Admin)."""
+def build_settings_main_keyboard() -> InlineKeyboardMarkup:
+    return pack_buttons([
+        InlineKeyboardButton("⏱️ Join Time", callback_data="settings_menu_jointime"),
+        InlineKeyboardButton("⏱️ Action Time", callback_data="settings_menu_optime"),
+        InlineKeyboardButton("👥 Min Players", callback_data="settings_menu_minplayers"),
+        InlineKeyboardButton("🔭 Spectators", callback_data="settings_menu_spectate"),
+    ], per_row=2)
+
+
+async def _render_settings_main(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: Union[int, None] = None):
+    settings = get_group_settings(chat_id)
+    text = build_settings_text(settings)
+    keyboard = build_settings_main_keyboard()
+    if message_id:
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id, message_id=message_id, text=text,
+                reply_markup=keyboard, parse_mode=ParseMode.HTML
+            )
+            return
+        except (BadRequest, TelegramError):
+            pass
+    await safe_send(context, chat_id, text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+
+async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Displays current game settings for the group with tappable buttons (Group Admin)."""
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
 
     if update.effective_chat.type == 'private':
-        await safe_send(context, chat_id, "⚙️ Group command only.")
+        await safe_send(context, chat_id, "⚙️ This command is for group chats only.")
         return
     if not await is_admin_or_owner(context, chat_id, user_id):
-        await safe_send(context, chat_id, "🚫 Group Admin rights required.")
+        await safe_send(context, chat_id, "🚫 Access Denied: You need Group Admin rights.")
         return
 
-    try:
-        seconds = int(context.args[0])
-        if not (30 <= seconds <= 600):
-            raise ValueError("Time must be between 30 and 600 seconds.")
-    except (IndexError, ValueError):
-        await safe_send(context, chat_id, "⚠️ <b>Usage:</b> <code>/setjointime <seconds></code> (e.g., <code>/setjointime 90</code>). Must be between 30-600.")
-        return
-
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute('INSERT OR IGNORE INTO group_settings (chat_id) VALUES (?)', (chat_id,))
-        cursor.execute('UPDATE group_settings SET join_time = ? WHERE chat_id = ?', (seconds, chat_id))
-        conn.commit()
-        await safe_send(context, chat_id, f"✅ <b>Join Time Updated:</b> Set to {seconds} seconds.")
-        logger.info(f"⚙️ Join time set to {seconds}s for chat {chat_id} by admin {user_id}.")
-    except sqlite3.Error as e:
-        logger.error(f"❌ DB Error setting join time for chat {chat_id}: {e}")
-        await safe_send(context, chat_id, "❌ Error updating setting in database.")
-    finally:
-        if conn: conn.close()
+    await _render_settings_main(context, chat_id)
 
 
-async def setoptime_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sets the action phase duration (Group Admin)."""
+async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles every button tap inside the /settings panel (menus + value selection)."""
+    query = update.callback_query
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
+    data = query.data
 
-    if update.effective_chat.type == 'private':
-        await safe_send(context, chat_id, "⚙️ Group command only.")
-        return
     if not await is_admin_or_owner(context, chat_id, user_id):
-        await safe_send(context, chat_id, "🚫 Group Admin rights required.")
+        await query.answer("🚫 Group Admin rights required.", show_alert=True)
         return
 
-    try:
-        seconds = int(context.args[0])
-        if not (30 <= seconds <= 600):
-            raise ValueError("Time must be between 30 and 600 seconds.")
-    except (IndexError, ValueError):
-        await safe_send(context, chat_id, "⚠️ <b>Usage:</b> <code>/setoptime <seconds></code> (e.g., <code>/setoptime 75</code>). Must be between 30-600.")
+    # --- Sub-menus (pick a category) ---
+    if data == "settings_menu_jointime":
+        keyboard = pack_buttons([
+            InlineKeyboardButton(f"{s}s", callback_data=f"settings_set_jointime_{s}")
+            for s in (30, 60, 90, 120, 180, 300)
+        ] + [InlineKeyboardButton("◀️ Back", callback_data="settings_back")], per_row=3)
+        await query.edit_message_text("⏱️ <b>Choose Join Phase duration:</b>", reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        await query.answer()
         return
 
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute('INSERT OR IGNORE INTO group_settings (chat_id) VALUES (?)', (chat_id,))
-        cursor.execute('UPDATE group_settings SET operation_time = ? WHERE chat_id = ?', (seconds, chat_id))
-        conn.commit()
-        await safe_send(context, chat_id, f"✅ <b>Action Time Updated:</b> Set to {seconds} seconds per day.")
-        logger.info(f"⚙️ Operation time set to {seconds}s for chat {chat_id} by admin {user_id}.")
-    except sqlite3.Error as e:
-        logger.error(f"❌ DB Error setting op time for chat {chat_id}: {e}")
-        await safe_send(context, chat_id, "❌ Error updating setting in database.")
-    finally:
-        if conn: conn.close()
-
-
-async def setminplayers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sets the minimum players to start (Group Admin)."""
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
-
-    if update.effective_chat.type == 'private':
-        await safe_send(context, chat_id, "⚙️ Group command only.")
-        return
-    if not await is_admin_or_owner(context, chat_id, user_id):
-        await safe_send(context, chat_id, "🚫 Group Admin rights required.")
+    if data == "settings_menu_optime":
+        keyboard = pack_buttons([
+            InlineKeyboardButton(f"{s}s", callback_data=f"settings_set_optime_{s}")
+            for s in (30, 60, 90, 120, 180, 300)
+        ] + [InlineKeyboardButton("◀️ Back", callback_data="settings_back")], per_row=3)
+        await query.edit_message_text("⏱️ <b>Choose Action Phase duration:</b>", reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        await query.answer()
         return
 
-    try:
-        count = int(context.args[0])
-        if not (2 <= count <= 10): # Sensible limits
-            raise ValueError("Min players must be between 2 and 10.")
-    except (IndexError, ValueError):
-        await safe_send(context, chat_id, "⚠️ <b>Usage:</b> <code>/setminplayers <count></code> (e.g., <code>/setminplayers 3</code>). Must be between 2-10.")
+    if data == "settings_menu_minplayers":
+        keyboard = pack_buttons([
+            InlineKeyboardButton(str(n), callback_data=f"settings_set_minplayers_{n}")
+            for n in (2, 3, 4, 5, 6, 8, 10)
+        ] + [InlineKeyboardButton("◀️ Back", callback_data="settings_back")], per_row=4)
+        await query.edit_message_text("👥 <b>Choose minimum players to start:</b>", reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        await query.answer()
         return
 
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute('INSERT OR IGNORE INTO group_settings (chat_id) VALUES (?)', (chat_id,))
-        cursor.execute('UPDATE group_settings SET min_players = ? WHERE chat_id = ?', (count, chat_id))
-        conn.commit()
-        await safe_send(context, chat_id, f"✅ <b>Minimum Players Updated:</b> Set to {count}.")
-        logger.info(f"⚙️ Min players set to {count} for chat {chat_id} by admin {user_id}.")
-    except sqlite3.Error as e:
-        logger.error(f"❌ DB Error setting min players for chat {chat_id}: {e}")
-        await safe_send(context, chat_id, "❌ Error updating setting in database.")
-    finally:
-        if conn: conn.close()
-
-
-async def setspectate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enables or disables spectators (Group Admin)."""
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
-
-    if update.effective_chat.type == 'private':
-        await safe_send(context, chat_id, "⚙️ Group command only.")
-        return
-    if not await is_admin_or_owner(context, chat_id, user_id):
-        await safe_send(context, chat_id, "🚫 Group Admin rights required.")
+    if data == "settings_menu_spectate":
+        keyboard = pack_buttons([
+            InlineKeyboardButton("✅ Allow", callback_data="settings_set_spectate_1"),
+            InlineKeyboardButton("❌ Disable", callback_data="settings_set_spectate_0"),
+            InlineKeyboardButton("◀️ Back", callback_data="settings_back"),
+        ], per_row=2)
+        await query.edit_message_text("🔭 <b>Allow spectators in this group?</b>", reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        await query.answer()
         return
 
-    try:
-        setting = int(context.args[0])
-        if setting not in [0, 1]:
-            raise ValueError("Setting must be 1 (allow) or 0 (disallow).")
-    except (IndexError, ValueError):
-        await safe_send(context, chat_id, "⚠️ <b>Usage:</b> <code>/setspectate <1 or 0></code> (1=Allow, 0=Disallow).")
+    if data == "settings_back":
+        await _render_settings_main(context, chat_id, message_id=query.message.message_id)
+        await query.answer()
         return
 
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute('INSERT OR IGNORE INTO group_settings (chat_id) VALUES (?)', (chat_id,))
-        cursor.execute('UPDATE group_settings SET allow_spectators = ? WHERE chat_id = ?', (setting, chat_id))
-        conn.commit()
-        status = "✅ Allowed" if setting == 1 else "❌ Disabled"
-        await safe_send(context, chat_id, f"🔭 <b>Spectator Mode Updated:</b> Spectators are now {status}.")
-        logger.info(f"⚙️ Spectator mode set to {setting} for chat {chat_id} by admin {user_id}.")
-    except sqlite3.Error as e:
-        logger.error(f"❌ DB Error setting spectator mode for chat {chat_id}: {e}")
-        await safe_send(context, chat_id, "❌ Error updating setting in database.")
-    finally:
-        if conn: conn.close()
+    # --- Applying a chosen value ---
+    if data.startswith("settings_set_jointime_"):
+        value = int(data.rsplit("_", 1)[1])
+        update_group_setting(chat_id, "join_time", value)
+        await query.answer(f"✅ Join time set to {value}s")
+    elif data.startswith("settings_set_optime_"):
+        value = int(data.rsplit("_", 1)[1])
+        update_group_setting(chat_id, "operation_time", value)
+        await query.answer(f"✅ Action time set to {value}s")
+    elif data.startswith("settings_set_minplayers_"):
+        value = int(data.rsplit("_", 1)[1])
+        update_group_setting(chat_id, "min_players", value)
+        await query.answer(f"✅ Min players set to {value}")
+    elif data.startswith("settings_set_spectate_"):
+        value = int(data.rsplit("_", 1)[1])
+        update_group_setting(chat_id, "allow_spectators", value)
+        await query.answer("✅ Spectator setting updated")
+    else:
+        await query.answer()
+        return
+
+    # Go back to the main settings screen showing the updated value
+    await _render_settings_main(context, chat_id, message_id=query.message.message_id)
 
 # ✨ ======================== DATABASE EXPORT/RESTORE COMMANDS (Owner Only) ======================== ✨
 
@@ -6846,6 +7051,19 @@ async def handle_move_selection(update: Update, context: ContextTypes.DEFAULT_TY
         # await send_operation_dm(context, game, user_id)
 
 
+# 🪪 ======================== NAME TRACKING (for mentions) ======================== 🪪
+async def track_user_name(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """Runs before every other handler; caches each user's display name so
+    mention() can show real names instead of the generic 'Captain'."""
+    try:
+        user = update.effective_user
+        if user:
+            display_name = user.first_name or user.username or f"Captain_{user.id}"
+            register_name(user.id, display_name)
+    except Exception:
+        pass
+
+
 # 🚨 ======================== GLOBAL ERROR HANDLER ======================== 🚨
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     """Logs errors and notifies user/dev if possible."""
@@ -6884,10 +7102,13 @@ def main() -> None:
 
         # --- Register Handlers ---
         logger.info("Registering command handlers...")
+        # Name tracker — runs first, for every update type (messages, callbacks, etc.)
+        application.add_handler(TypeHandler(Update, track_user_name), group=-1)
         # Core
         application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("rules", rules_command))
+        application.add_handler(CommandHandler("tutorial", tutorial_command))
         application.add_handler(CommandHandler("mysea", mysea_command))
         application.add_handler(CommandHandler("builders", builders_command))
         application.add_handler(CommandHandler("seas", seas_command))
@@ -6901,11 +7122,11 @@ def main() -> None:
         application.add_handler(CommandHandler("cancel", cancel_command))
         application.add_handler(CommandHandler("spectate", spectate_command))
         # In-Game Info
-        application.add_handler(CommandHandler("map", map_command))
+        application.add_handler(CommandHandler("map", map_command, filters=filters.ChatType.PRIVATE))
         application.add_handler(CommandHandler("position", position_command))
-        application.add_handler(CommandHandler("myhp", myhp_command))
+        application.add_handler(CommandHandler("myhp", myhp_command, filters=filters.ChatType.PRIVATE))
         application.add_handler(CommandHandler("inventory", inventory_command))
-        application.add_handler(CommandHandler("ranking", ranking_command))
+        application.add_handler(CommandHandler("ranking", ranking_command, filters=filters.ChatType.PRIVATE))
         application.add_handler(CommandHandler("dailystats", stats_detailed_command))
         application.add_handler(CommandHandler("stats", stats_detailed_command, filters=filters.ChatType.GROUPS)) # Alias in groups
         # In-Game Actions
@@ -6926,10 +7147,6 @@ def main() -> None:
         application.add_handler(CommandHandler("cosmetics", cosmetics_command))
         # Group Admin
         application.add_handler(CommandHandler("settings", settings_command))
-        application.add_handler(CommandHandler("setjointime", setjointime_command))
-        application.add_handler(CommandHandler("setoptime", setoptime_command))
-        application.add_handler(CommandHandler("setminplayers", setminplayers_command))
-        application.add_handler(CommandHandler("setspectate", setspectate_command))
         application.add_handler(CommandHandler("extend", extend_command))
         application.add_handler(CommandHandler("endgame", endgame_command))
         # Bot Admin / Owner
@@ -6958,6 +7175,7 @@ def main() -> None:
         application.add_handler(CallbackQueryHandler(handle_target_selection, pattern=r'^target_'))
         application.add_handler(CallbackQueryHandler(handle_move_selection, pattern=r'^move_'))
         application.add_handler(CallbackQueryHandler(handle_shop_selection, pattern=r'^shop_'))
+        application.add_handler(CallbackQueryHandler(handle_settings_callback, pattern=r'^settings_'))
         application.add_handler(CallbackQueryHandler(handle_map_cell_tap, pattern=r'^shipmap:'))
         # Add pattern for spectate button if needed, e.g. pattern=r'^spectate_'
         # application.add_handler(CallbackQueryHandler(handle_spectate_button, pattern=r'^spectate_'))
