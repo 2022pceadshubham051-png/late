@@ -38,10 +38,10 @@ logger = logging.getLogger(__name__)
 # 🚀 ======================== CONFIGURATION ======================== 🚀
 
 # --- Bot Token ---
-BOT_TOKEN = '8428913798:AAEum09SVPOzK-QazPlcoKo67N5c5Y5gI4c' # <<< 🔑 Replace with your Bot Token from BotFather
+BOT_TOKEN = '8474213410:AAE7UDzzrJUwdmQL1qssQclsVrAyMVSHv7A' # <<< 🔑 Replace with your Bot Token from BotFather
 
 # --- User IDs ---
-OWNER_ID = 8702369452 # 👑 The Bot Owner (Full Access)
+OWNER_ID = 8644197194 # 👑 The Bot Owner (Full Access)
 ADMIN_IDS = [7460266461, 7379484662, 8049934625] # 🛡️ Additional Bot Admins (e.g., for /stats)
 
 # --- Group IDs ---
