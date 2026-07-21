@@ -1022,7 +1022,11 @@ class Game:
         return defaults # Return defaults if not found or on error
 
     def set_map(self, map_key: str):
-        """Sets the game map and resets grid/safe zone accordingly."""
+        """Sets the game map and resets grid/safe zone accordingly.
+        Important: the creator is added as a player during map voting, BEFORE the map
+        is finalized here. If we simply wipe map_grid, that player becomes invisible on
+        the map (still 'alive', but with no grid entry). So after resetting the grid,
+        we re-place any already-registered players into it."""
         if map_key not in MAPS:
             logger.warning(f"⚠️ Invalid map key '{map_key}', defaulting to 'classic'.")
             map_key = 'classic'
@@ -1035,6 +1039,14 @@ class Game:
         self.safe_zone_center = (self.map_size // 2, self.map_size // 2)
         self.safe_zone_radius = float('inf') # Start covering everything
         self.safe_zone_current_phase = 0
+
+        # Re-place any players who joined before the map was finalized (e.g. the creator,
+        # who is auto-added during map voting) so they don't vanish from the map.
+        for user_id, player in self.players.items():
+            x, y = random.randint(0, self.map_size - 1), random.randint(0, self.map_size - 1)
+            player['position'] = (x, y)
+            self.map_grid[x][y].append(user_id)
+
         logger.info(f"🗺️ Map set to '{map_key}' ({self.map_size}x{self.map_size}) for game in chat {self.chat_id}")
 
     def add_player(self, user_id: int, username: str, first_name: str, team: Union[str, None] = None) -> tuple[bool, str]:
@@ -2117,6 +2129,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context=context, chat_id=chat_id, photo_url=get_random_image('start'),
         caption=welcome_text, reply_markup=keyboard, parse_mode=ParseMode.HTML
     )
+
+    # 🚢 If this player is mid-battle and hasn't submitted today's action yet, resend
+    # their console right now instead of leaving them stuck until the next day (this is
+    # the common case where their first DM attempt failed because they hadn't started
+    # a chat with the bot yet).
+    if update.effective_chat.type == 'private':
+        game_chat_id, game = find_active_game_for_player(user.id)
+        if game:
+            player_data = game.players.get(user.id)
+            if player_data and player_data.get('alive') and player_data.get('operation') is None:
+                await send_operation_dm(context, game, user.id)
 
 # 🌊 ======================== SEA SELECTION CALLBACK ======================== 🌊
 async def handle_sea_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
