@@ -2,6 +2,7 @@ import logging
 import asyncio
 import random
 import sqlite3
+import io
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, TypeHandler, filters, ContextTypes
@@ -11,6 +12,7 @@ from collections import defaultdict
 import json
 import os
 from typing import Union
+from PIL import Image, ImageDraw, ImageFont
 # Import necessary classes for media handling
 from telegram import InputMediaAnimation, InputMediaPhoto
 
@@ -50,6 +52,114 @@ TEAM_STATUS_ICON = {
     "dead": "💀",
     "afk": "⏳",
 }
+
+# 🗺️ ======================== VISUAL MAP RENDERER ======================== 🗺️
+# Renders the SHIPOVERSE parchment-grid artwork as the battle map background
+# and plots ships/loot/wrecks directly onto it as an image (replaces the old
+# clickable button-grid map). Two artworks are available — a 5x5 board and an
+# 8x8 board — and the correct one is picked automatically based on map size.
+ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+MAP_LAYOUTS = {
+    5: {
+        "bg_path": os.path.join(ASSETS_DIR, "map_bg.png"),
+        "origin": (588, 268),   # pixel (x, y) of the top-left corner of the A1 cell
+        "size": (654, 480),     # pixel (width, height) spanned by the full grid
+    },
+    8: {
+        "bg_path": os.path.join(ASSETS_DIR, "map_bg_8x8.png"),
+        "origin": (540, 236),
+        "size": (600, 516),
+    },
+}
+
+# Solo mode: everyone sees the SAME two colors regardless of viewer — bright
+# green for their own ship, bright red for every enemy. Team mode: each team
+# gets its own bold, high-contrast color so allies/enemies are obvious at a
+# glance. Markers are drawn LARGE (see radius factors below) so they read
+# clearly even on a phone screen.
+MAP_COLORS = {
+    "self": (46, 213, 115, 255),      # bright green
+    "enemy": (255, 71, 87, 255),      # bright red
+    "team_alpha": (30, 144, 255, 255),   # bold blue
+    "team_beta": (255, 165, 2, 255),     # bold orange (distinct from red/green)
+    "destroyed": (90, 80, 70, 255),
+    "loot": (241, 196, 15, 255),
+}
+COLUMN_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def render_map_image(game, viewer_id: Union[int, None] = None) -> io.BytesIO:
+    """Composites the current battle state onto the SHIPOVERSE map artwork and
+    returns a PNG in a BytesIO buffer, ready to hand to safe_send_photo.
+    Ship markers are drawn big and bold (labelled with the player's initials)
+    so they're easy to spot at a glance; multiple ships sharing a cell fan out
+    side by side. Wrecked cells get an X marker. Picks the 5x5 or 8x8 board
+    artwork automatically based on the game's map size."""
+    n = game.map_size
+    layout = MAP_LAYOUTS.get(n, MAP_LAYOUTS[5])
+    bg = Image.open(layout["bg_path"]).convert("RGBA")
+    draw = ImageDraw.Draw(bg)
+
+    origin_x, origin_y = layout["origin"]
+    grid_w, grid_h = layout["size"]
+    cell_w = grid_w / n
+    cell_h = grid_h / n
+
+    try:
+        label_font = ImageFont.truetype("DejaVuSans-Bold.ttf", max(14, int(cell_h * 0.34)))
+    except Exception:
+        label_font = ImageFont.load_default()
+
+    for r in range(n):
+        for c in range(n):
+            cell_ids = game.map_grid[r][c]
+            alive_here = [uid for uid in cell_ids if game.players.get(uid, {}).get('alive')]
+            cx = origin_x + c * cell_w + cell_w / 2
+            cy = origin_y + r * cell_h + cell_h / 2
+
+            if not alive_here:
+                if cell_ids:  # someone died here — draw a wreck marker
+                    radius = min(cell_w, cell_h) * 0.22
+                    draw.ellipse([cx - radius, cy - radius, cx + radius, cy + radius],
+                                 fill=MAP_COLORS["destroyed"], outline=(0, 0, 0, 255), width=3)
+                    d = radius * 0.55
+                    draw.line([cx - d, cy - d, cx + d, cy + d], fill=(255, 255, 255, 255), width=4)
+                    draw.line([cx - d, cy + d, cx + d, cy - d], fill=(255, 255, 255, 255), width=4)
+                continue
+
+            count = len(alive_here)
+            # Big, bold markers — sized generously against the cell so they're
+            # unmistakable even with several ships sharing one square.
+            radius = min(cell_w, cell_h) * (0.34 if count == 1 else 0.26)
+            spacing = radius * 2.1
+            for i, uid in enumerate(alive_here):
+                player = game.players[uid]
+                if game.mode == 'team':
+                    # Team mode: color denotes TEAM, same for every viewer.
+                    color = MAP_COLORS["team_alpha"] if player.get('team') == 'alpha' else MAP_COLORS["team_beta"]
+                elif viewer_id is not None:
+                    # Solo mode: color denotes SELF vs ENEMY, same two colors for everyone.
+                    color = MAP_COLORS["self"] if uid == viewer_id else MAP_COLORS["enemy"]
+                else:
+                    color = MAP_COLORS["self"] if i == 0 else MAP_COLORS["enemy"]
+
+                offset_x = (i - (count - 1) / 2) * spacing
+                px, py = cx + offset_x, cy
+                draw.ellipse([px - radius, py - radius, px + radius, py + radius],
+                             fill=color, outline=(255, 255, 255, 255), width=3)
+
+                name = str(player.get('first_name') or '?')
+                initials = "".join(w[0] for w in name.split()[:2]).upper() or "?"
+                bbox = draw.textbbox((0, 0), initials, font=label_font)
+                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                draw.text((px - tw / 2 - bbox[0], py - th / 2 - bbox[1]), initials,
+                           fill=(255, 255, 255, 255), font=label_font)
+
+    buf = io.BytesIO()
+    buf.name = "battle_map.png"
+    bg.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
 
 # ---------- NAME CACHE (so mention() can show real names) ----------
 
@@ -103,9 +213,10 @@ def direction_arrow(d_row: int, d_col: int) -> str:
 
 def build_card(title: str, lines: list, emoji: str = "🎴") -> str:
     """Builds an HTML-formatted 'card' block used throughout the bot."""
-    header = f"{emoji} <b>{title}</b>\n" + "─" * 20 + "\n"
-    body = "\n".join(str(line) for line in lines)
-    return header + body
+    header = f"{emoji} <b>{title}</b>\n┌" + "─" * 19 + "\n"
+    body = "\n".join(f"├ {line}" if line else "├" for line in lines)
+    footer = "\n└" + "─" * 19
+    return header + body + footer
 
 
 def branch_lines(items: list) -> list:
@@ -458,33 +569,77 @@ fix_corrupted_coins_in_db()
 
 # 🎬 ======================== GIF COLLECTIONS ======================== 🎬
 # Used for dynamic messages like joining, starting, winning etc.
+# Each event category now has 4-5 GIFs — get_random_gif() below picks one at
+# random every time, so the same event looks different call to call.
+#
+# 🚧 These use Wikimedia Commons' stable "Special:FilePath" redirect links so
+# they're guaranteed to hotlink correctly for send_animation out of the box.
+# Swap any of these for your own themed clips whenever you like — just keep
+# each category as a list of 4-5 direct .gif/.mp4 URLs.
+_WM = "https://commons.wikimedia.org/wiki/Special:FilePath/"
+
+def _wm(filename: str) -> str:
+    """Builds a stable, direct-hotlink Wikimedia Commons URL for a filename (spaces -> %20)."""
+    return _WM + filename.replace(" ", "%20")
+
+_FIRE_GIFS = [
+    _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHYzMjd5YWc4aXFwcDB3bjYxOGI1YXdtdXpqZmowOHYxYnlzNWUzbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/EeTwHqk6WROjXPwAuv/giphy.gif"),
+    _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExcDZ6bHJ2ZHRlOTY2cWVxNHZtNHFkcTM5dXloeDIweWhrZGJybm1uciZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/eOYcHpafrLWRIA1TfE/giphy.gif"),
+]
+_SPACE_GIFS = [
+    _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExazM2dXJ0dnVqaHF6c2F1ZnF5dmNtb3FvMXl1eWx4amF0NjBpcWtjOSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/BOYwrfc46YjZGmVY14/giphy.gif"),
+    _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcHg5djBiemNpNTk2NDE1d2VyMWxmYTNuM3FicWNjNGNkOHp2ZDF2ZCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/vOeYXUOwgoqHmSg65X/giphy.gif"),
+    _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExdDRkaHJoYnk0c2ZwaXM0NjMyOXpvazdqcTRlamNldWJpMGc2dmNueSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/O6zi6Tqv3K1yqYaDDr/giphy.gif"),
+]
+
 GIFS = {
-    # 🚧 TEMP PLACEHOLDERS — replace these with your own GIF URLs later.
-    # These are stable, publicly hotlinkable Wikimedia URLs so send_animation actually works in the meantime.
     'joining': [
-        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
+        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnJ6cTF4ZjA0dWJ5a2xraTZ4c3Z3eGZqZ2tnZ2NlYTkyNzN1N243MSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/8rl6ksNWBayvLS57zw/giphy.gif"),
+        _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcDVwYXZ0OXFjdmw0b2Y3cndnb3h5ZDZ5OXlwcGFvenNzeTl3Z2g4cCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Jl5JbC6jdhaaCg9SJ6/giphy.gif"),
+        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExOWF1ZmUwaGRmcHkxZWkwdHZvNHRwYmJ3aGM4Mmlna3FvZTNyMXdpcCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/lKbahoyxsTKaXOq6C7/giphy.gif"),
+        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExc2Jkc3B0MzlrcDl6c202emZjYTd4OHM3cjd0aGM3Y3ZlNXlsanEzbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Fmbo4NMswrRtoivL5M/giphy.gif"),
     ],
     'start': [
-        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
+        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMmVybWZhd2QybXo5N2tpNm44YTdqcHcxOHprNWp0eGoxMHNwazllbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/F4pcaatrJJi634GsKo/giphy.gif"),
+        _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExdDR0YnBkbTNqeWhoMmNsczdqNHlwaW5sMDd5MnVnNWlneHQ2cmwxaiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/skl7A8hBxLt6AB2mcA/giphy.gif"),
+        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExbnRhZWo0ZzhtNG1wOWNhYnphZnppYmV6OXcxOG9mODlseGk5MDk3MyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/H33MTVHhoH0pPbtBHJ/giphy.gif"),
+        _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExNDAyYnl3d2NjbGE3ajZuZm15amJzenZ4Njh1eTJ0dXltOWI2bnJiaCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/wKRLqcSCYEhbaQzhw6/giphy.gif"),
+        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExOWprYmR6bjYzdndzanI4aTJsdHlmcWhocTJ0cHd5bnp0enc5cmtleSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Jq7pCAnWcPYgrXzRYq/giphy.gif"),
     ],
     'operation': [
-        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
+        _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExdHdrNzJodHN1ZDdjbXpxZGdyeWtzZXF0MXF4Mjd5ZjB6dWN0MHExMyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/9RCrzklpWA64JqzZ3f/giphy.gif"),
+        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExNXIzNDYwZm1zczNiZXdjMHI2ZGJ4cXZnejhsaW0zeWh6NGlieXJxaSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/wGcZI7hVswmgsHWc8w/giphy.gif"),
+        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExYTBwNHB6ZnI5amNzcnVseHJ3a2R4eG5tYm9lY2tjcGQwb3ZkYmUyeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/t4e3WLf6Vw8tRPHaEO/giphy.gif"),
+        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExeTkzeWlkcTAyd3puNDdtdmtwbXhiMDhmNGF4MmtyZDZkcnV4dm1lMCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gjrPogG9sAOCe5FlOA/giphy.gif"),
     ],
     'day_summary': [
-        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
+        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExYnBiaXM5cHI4cTNtcGV5c3Y3d3ZyNG82djF3enhrZ3BpazF1OGk5YyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/oeNOwF7CU6CXn1ql6x/giphy.gif"),
+        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExcXdwdHhlYTFzbnJ5cmVydDRobWI4bGk4dTlld3Q0Z3hveWUyaWxjZiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/P9jymNfU9mz6Psq7fo/giphy.gif"),
+        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExeXN2ejdicjVvcnVlbjdha2ZpbzkzMHJwY2t1eWs3cmUyZDU4M2ZpeiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/VlejYNPZzHCLTLYdIP/giphy.gif"),
+        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExcDdpMGtyN2U5eGI5cGwxaHJha3kzN2prbXNkM2Rjczd5bG95czl6ZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Tx3Fk538Tb9uw5Fgen/giphy.gif"),
     ],
     'victory': [
-        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
+        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExaThoejI3bmtjOXA4ZmtxMWgzbzB0cDQ0enh2YzFzczh0NHluYTU1aCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/ayQwZtTrbZmYlezEBQ/giphy.gif"),
+        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2FocDZ3NzYxYWl5d2R3bGZramRvd3VvMnd5YjN3YmJsdnk5NjhtdSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/23ONZyNRrBAS3Syl8i/giphy.gif"),
+        _wm("https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHR6eHI0cGlwaTNudHBvYzdoNG1xd2ttbXE1aWt4M3hqZDFraDhpciZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/FRUKh21wWRQJu6MF7P/giphy.gif"),
+        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExaTUyNmlxMW5lbDdwd29tbno3bnRnaTBra3FlbWpoeXVxdDNvcnd6NCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/V6qtMo0Ra64RO7qwGi/giphy.gif"),
     ],
-    'eliminated': [
-        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
-    ],
+    'eliminated': _FIRE_GIFS,
     'extend': [
-        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
+        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExMmtyYTBlZjQ3NjEzZGltZXVlemJsdnh0YzFyYTkzZ3N3NTR4anEwdiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/6ckXK5HT7EPCuHfBum/giphy.gif"),
     ],
-    'event': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif',
-    'meteor': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif',
-    'boost': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
+    'event': _SPACE_GIFS,
+    'meteor': [
+        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZXphb2hqdjgwcGoyeXdnN3NuNjYzOGxqM3BrYWtxc3Bpc3VyMGhqMSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/DkzJAKRnfkprPgzb6y/giphy.gif"),
+        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExbWxqdnJ4bHA0aXNla3JxdzllMTJ3YmFyNWdmMjkwc3g0NjdiYXBkYSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/5tZqRHbFuhjR7FNpn5/giphy.gif"),
+        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExbmEzeGtnenlyMjdqenMwM3JoMnIweGNmcWY5ZDBmcHA0cXg2M2hyOSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/RJgPGb02D71GRILVSA/giphy.gif"),
+    ],
+    'boost': [
+        _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExeDI1Ymd2eHFjZXlybXFtYzJsMXcyNW1hZnY5NjRtMW0wdDNjODI0ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/TFlNsHFsW3QHRxjQLA/giphy.gif"),
+        _wm("https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExcXBxMDFteHRxNGtiNGlsZ3l6cGl5dzV6a3U5b3BhbDV3MXZiZTUyeCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/UdEuidxWEgHVvOJZhl/giphy.gif"),
+        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExbWVzNGU5ZjZ6eGRmejRqc3cyaXdmaHhyNzYybHdvcTdxN3FmaDFkciZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/yJKToyVBMjXOY0RezY/giphy.gif"),
+        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZnAyMGo5YjFtNzMzMDB0ZGZqankza3k4c2lvN3k0djIwOWcybWI1MiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/RlqORiAYySnwVs3SzM/giphy.gif"),
+    ],
 }
 
 # 🖼️ ======================== IMAGE COLLECTIONS ======================== 🖼️
@@ -492,19 +647,19 @@ GIFS = {
 # 🚧 TEMP PLACEHOLDERS — replace these with your own image URLs later.
 # Using a stable, publicly hotlinkable Wikimedia space image so send_photo actually works in the meantime.
 IMAGES = {
-    'start':        'https://picsum.photos/800/450',
-    'help':         'https://picsum.photos/800/450',
-    'rules':        'https://picsum.photos/800/450',
-    'stats_admin':  'https://picsum.photos/800/450',
-    'mystats':      'https://picsum.photos/800/450',
-    'leaderboard':  'https://picsum.photos/800/450',
-    'shop':         'https://picsum.photos/800/450',
-    'daily':        'https://picsum.photos/800/450',
-    'achievements': 'https://picsum.photos/800/450',
-    'compare':      'https://picsum.photos/800/450',
-    'tips':         'https://picsum.photos/800/450',
-    'history':      'https://picsum.photos/800/450',
-    'default':      'https://picsum.photos/800/450'
+    'start':        'https://t.me/cric77777/9909',
+    'help':         'https://t.me/cric77777/9909',
+    'rules':        'https://t.me/cric77777/9909',
+    'stats_admin':  'https://t.me/cric77777/9909',
+    'mystats':      'https://t.me/cric77777/9909',
+    'leaderboard':  'https://t.me/cric77777/9909',
+    'shop':         'https://t.me/cric77777/9909',
+    'daily':        'https://t.me/cric77777/9909',
+    'achievements': 'https://t.me/cric77777/9909',
+    'compare':      'https://t.me/cric77777/9909',
+    'tips':         'https://t.me/cric77777/9909',
+    'history':      'https://t.me/cric77777/9909',
+    'default':      'https://t.me/cric77777/9909'
 }
 
 # ⚙️ ======================== GAME CONSTANTS ======================== ⚙️
@@ -1224,19 +1379,23 @@ class Game:
         alive_count = len(self.get_alive_players())
         safe_zone_side = min(n, int(self.safe_zone_radius * 2) + 1) if self.safe_zone_radius != float('inf') else n
         zone_status = f"{safe_zone_side}x{safe_zone_side} Square" if self.safe_zone_radius != float('inf') else "Full Map"
-        return build_card(
-            "BATTLE MAP",
-            [
-                f"🗺 {map_data['name']} ({n}x{n})",
-                f"☀️ Day : {self.day}   🚢 Ships Alive : {alive_count}/{len(self.players)}",
-                f"🌀 Safe Zone : {zone_status}",
-                "",
-                ("🔵 Team Alpha  🔴 Team Beta  🟣 Contested  🟡 Loot  🟦 Safe  ⬛ Destroyed"
-                 if self.mode == 'team' else
-                 "🟢 You  🔴 Enemy  🟡 Loot  🟦 Safe  ⬛ Destroyed  ⬜ Unknown"),
-            ],
-            emoji="🗺",
+        legend_lines = (
+            ["🔵 You                ↳ 🔴 Enemy", "📦 Loot              ↳ 🟩 Safe Zone", "💥 Destroyed   ↳ ❓ Unknown"]
+            if self.mode != 'team' else
+            ["🔵 Team Alpha  ↳ 🔴 Team Beta", "🟣 Contested   ↳ 🟡 Loot", "🟦 Safe             ↳ ⬛ Destroyed"]
         )
+        header = build_card(
+            "ARENA INFO",
+            [
+                f"🏟️ Map: {map_data['name']} ({n}x{n})",
+                f"📅 Day: {self.day}",
+                f"🛸 Ships Alive: {alive_count}/{len(self.players)}",
+                f"🛡️ Safe Zone: {zone_status}",
+            ],
+            emoji="📍",
+        )
+        header += "\n" + build_card("MAP LEGEND", legend_lines, emoji="🧭")
+        return "🗺️ BATTLE MAP\n──────────────────────────\n" + header
 
     def get_map_keyboard(self, viewer_id: Union[int, None] = None) -> InlineKeyboardMarkup:
         """Builds the clickable inline-button map grid (interactive, no plain-text map).
@@ -2116,20 +2275,23 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # else: already has a Sea — fall through to normal welcome below
 
     # Premium Cricoverse-style welcome card
-    welcome_text = build_card(
-        "🚢 SHIPOVERSE",
+    welcome_text = f"👨‍✈️ Greetings, Captain {mention(user.id)}!\n\n"
+    welcome_text += build_card(
+        "GAME MODES",
         [
-            f"⚓ Greetings, Captain {mention(user.id)}!",
-            "",
-            "🎮 GAME MODES",
-        ] + branch_lines([
-            "⚔️ Solo Battle   ➔ Free-for-all",
-            "👥 Team Mode     ➔ 2-team battles",
-        ]) + [
-            "",
-            "🚀 /creategame  📖 /help  🪪 /license",
+            "🎯 Solo Battle  ➔ Free-for-all",
+            "👥 Team Mode    ➔ 2-team battles",
         ],
-        emoji="🚀",
+        emoji="🎮",
+    )
+    welcome_text += "\n" + build_card(
+        "COMMANDS",
+        [
+            "🎮 /creategame",
+            "❓ /help",
+            "📜 /license",
+        ],
+        emoji="🛠️",
     )
 
     keyboard = pack_buttons([
@@ -3917,21 +4079,21 @@ async def display_joining_phase(message, context: ContextTypes.DEFAULT_TYPE, gam
     player_list_str = "\n".join(player_list) if player_list else "Waiting for captains..."
 
     # --- Assemble Caption (premium card) ---
-    card_lines = [
-        f"🗺 Arena : {escape_markdown_value(MAPS[game.map_type]['name'])}",
-        f"⏳ Time Remaining : {time_str}",
-        f"👥 Crew : {current_players}/{max_players} (Need {min_players} to launch!)",
-        "",
-        "<b>Registered Captains</b>",
+    match_lines = [
+        f"🏟️ Arena: {escape_markdown_value(MAPS[game.map_type]['name'])}",
+        f"⏳ Time Remaining: {time_str}",
+        f"👥 Crew: {current_players}/{max_players} (Need {min_players} to launch!)",
     ]
-    card_lines.extend(player_list_str.split("\n"))
-    card_lines.append("")
-    card_lines.append("Tap Join Battle or use /join to enter this free-for-all!")
-    if remaining_seconds <= 30 and remaining_seconds > 0:
-        card_lines.append("")
-        card_lines.append(f"🚨 <b>Final Call! {int(remaining_seconds)} seconds left!</b> 🚨")
+    caption = build_card("SOLO MATCH DETAILS", match_lines, emoji="📍")
 
-    caption = build_card("⚓ Solo Battle Muster", card_lines, emoji="🚢")
+    captain_lines = [f"{i + 1}. 👨‍✈️ {mention(user_id)}" for i, user_id in enumerate(sorted_player_ids)]
+    if not captain_lines:
+        captain_lines = ["Waiting for captains..."]
+    caption += "\n" + build_card("REGISTERED CAPTAINS", captain_lines, emoji="📜")
+
+    caption += "\n👉 Tap Join Battle or use /join to enter this free-for-all!"
+    if remaining_seconds <= 30 and remaining_seconds > 0:
+        caption += f"\n\n🚨 <b>Final Call! {int(remaining_seconds)} seconds left!</b> 🚨"
 
     # --- Buttons ---
     keyboard = pack_buttons([
@@ -4108,13 +4270,12 @@ async def start_game_phase(context: ContextTypes.DEFAULT_TYPE, game: Game):
         cancel_caption = build_card(
             "LAUNCH ABORTED",
             [
-                "Insufficient crew for battle commencement!",
-                f"Required : {min_players}   Joined : {current_players}",
-                "",
-                "The fleet disperses. Try again with /creategame!",
+                "⚠️ Alert: Insufficient crew for battle commencement!",
+                f"🧑‍🚀 Joined: {current_players}",
             ],
-            emoji="⏳",
+            emoji="⚠️",
         )
+        cancel_caption += "\n\nThe fleet disperses. Try again with /creategame!"
         await safe_send_animation(context, chat_id, get_random_gif('eliminated'), # Use a fitting GIF
                                   caption=cancel_caption, parse_mode=ParseMode.HTML)
         logger.warning(f"Game cancelled in chat {chat_id} due to insufficient players ({current_players}/{min_players}).")
@@ -4174,9 +4335,9 @@ async def start_game_phase(context: ContextTypes.DEFAULT_TYPE, game: Game):
     await safe_send_animation(context, chat_id, get_random_gif('start'),
                               caption=start_caption, parse_mode=ParseMode.HTML)
 
-    # Send the interactive button map as its own message (tap any cell for info)
-    await safe_send(context, chat_id, game.get_map_header_card(), parse_mode=ParseMode.HTML)
-    map_msg = await safe_send(context, chat_id, "🗺 Tap a cell to inspect it:", reply_markup=game.get_map_keyboard())
+    # Send the visual battle map as its own message
+    map_msg = await safe_send_photo(context, chat_id, render_map_image(game),
+                                    caption=game.get_map_header_card(), parse_mode=ParseMode.HTML)
     if map_msg:
         game.last_map_message_id = map_msg.message_id
 
@@ -4601,27 +4762,24 @@ async def set_operation(query: Update.callback_query, context: ContextTypes.DEFA
     time_left = format_time((game.operation_end_time - datetime.now()).total_seconds()) if game.operation_end_time else 'N/A'
 
     # --- Assemble Fancy Confirmation ---
-    confirmation_text = f"""
-    ✅ <b>Your action has been successfully registered!</b> ✅
-
-    {op_info['name']} — {op_info['desc']}
-    """
+    action_lines = [f"⚔️ Action: {op_info['name']} — {op_info['desc']}"]
     if operation == 'attack' and target_id:
         target_name = escape_markdown_value(game.players.get(target_id, {}).get('first_name', f'ID_{target_id}'))
-        confirmation_text += f"\n    Target Locked: {target_name}"
+        action_lines.append(f"🎯 Target Locked: {target_name}")
     elif operation == 'move':
          px, py = player['position']
-         confirmation_text += f"\n    Destination: ({px},{py})" # Show where they moved TO
+         action_lines.append(f"🧭 Destination: ({px},{py})") # Show where they moved TO
 
-    confirmation_text += f"""
-
-    ---
-    <b>Fleet Status:</b> {ready_count}/{total_alive} Captains Ready
-    <b>Time Remaining:</b> {time_left}
-    ---
-
-    Awaiting next cycle... ✨
-    """
+    confirmation_text = build_card("REGISTERED ORDER", action_lines, emoji="💥")
+    confirmation_text += "\n" + build_card(
+        "FLEET STATUS",
+        [
+            f"🛸 Captains Ready: {ready_count}/{total_alive}",
+            f"⏳ Time Remaining: {time_left}",
+        ],
+        emoji="📊",
+    )
+    confirmation_text += "\n⏳ Awaiting next cycle..."
 
     # --- Add Button to go back to Group ---
     # Attempt to get group link (works best for public groups)
@@ -4682,7 +4840,14 @@ async def operation_countdown(context: ContextTypes.DEFAULT_TYPE, game: Game):
 
             # Check if everyone is ready
             if ready_count == total_alive:
-                await safe_send(context, game.chat_id, f"🚀 <b>All Captains Ready!</b> Processing Day {game.day} actions...")
+                await safe_send(context, game.chat_id, build_card(
+                    "STATUS REPORT",
+                    [
+                        "🧑‍✈️ All Captains Ready!",
+                        f"⚙️ Processing Day {game.day} actions...",
+                    ],
+                    emoji="🚀",
+                ))
                 break # Process actions early
 
             now = datetime.now()
@@ -4699,9 +4864,9 @@ async def operation_countdown(context: ContextTypes.DEFAULT_TYPE, game: Game):
                     update_text = build_card(
                         f"DAY {game.day} — AWAITING ORDERS",
                         [
-                            f"⏳ Time Left : {format_time(remaining_sec)}",
-                            f"✅ Ready : {ready_count}/{total_alive}",
-                            f"⌛ Awaiting : {pending_str}",
+                            f"⏰ Time Left: {format_time(remaining_sec)}",
+                            f"🎯 Ready: {ready_count}/{total_alive}",
+                            f"⏳ Awaiting: {pending_str}",
                         ],
                         emoji="⏳",
                     )
@@ -4902,7 +5067,7 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
 
     # --- Preparation ---
     game.update_alliances() # Decrement alliance timers
-    summary_log: list[str] = [f"✨ <b>Day {day} - Action Report</b> ✨\n"] # Start summary log
+    summary_log: list[str] = [f"🌐 <b>DAY {day} — ACTION REPORT</b>\n──────────────────────────"] # Start summary log
     fancy_separator = "〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️"
 
     # --- Safe Zone Update & Damage ---
@@ -4954,7 +5119,15 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
                 eliminated_by_afk.append(f"  👻 {mention(user_id)} lost contact! (Eliminated for AFK)")
                 # Send DM to eliminated player
                 await safe_send_animation(context, user_id, get_random_gif('eliminated'),
-                                          caption=f"🛰️ <b>Connection Lost - Day {day}</b> 🛰️\nYour ship failed to report for {AFK_TURNS_LIMIT} cycles and was lost to the void. Stay responsive next time!",
+                                          caption=build_card(
+                                              "CONNECTION LOST",
+                                              [
+                                                  f"📅 Day: {day}",
+                                                  f"⚠️ Alert: Ship failed to report for {AFK_TURNS_LIMIT} cycles.",
+                                                  "🌌 Status: Lost to the void.",
+                                              ],
+                                              emoji="📡",
+                                          ),
                                           parse_mode=ParseMode.HTML)
             else:
                 player['operation'] = 'defend' # Auto-defend
@@ -5173,27 +5346,19 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
 
     # --- Assemble Logs for Summary ---
     if combat_log:
-        summary_log.append("⚔️ <b>Combat Report</b>")
-        summary_log.extend(combat_log)
-        summary_log.append(fancy_separator)
+        summary_log.append(build_card("COMBAT REPORT", combat_log, emoji="🌌"))
     if heal_log:
-        summary_log.append("🔧 <b>Repair Log</b>")
-        summary_log.extend(heal_log)
-        summary_log.append(fancy_separator)
+        summary_log.append(build_card("REPAIR LOG", heal_log, emoji="🔧"))
     if loot_log:
-        summary_log.append("💎 <b>Loot Findings</b>")
-        summary_log.extend(loot_log)
-        summary_log.append(fancy_separator)
+        summary_log.append(build_card("LOOT FINDINGS", loot_log, emoji="📦"))
     if move_log:
-        summary_log.append("🧭 <b>Navigation Log</b>")
-        summary_log.extend(move_log)
-        summary_log.append(fancy_separator)
+        summary_log.append(build_card("NAVIGATION LOG", move_log, emoji="🧭"))
 
     # --- Process Eliminations (from combat, zone damage etc.) ---
     for user_id, player in list(game.players.items()): # Iterate on copy
         if player.get('alive') and player.get('hp', 0) <= 0:
             player['alive'] = False
-            elimination_log.append(f"  💀 {mention(user_id)}'s ship was destroyed!")
+            elimination_log.append(f"❌ {mention(user_id)}'s ship was destroyed!")
 
             # Send DM to eliminated player
             await safe_send_animation(context, user_id, get_random_gif('eliminated'),
@@ -5204,13 +5369,11 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
             # Example: Find who dealt the killing blow if needed by tracking damage sources more closely
 
     if elimination_log: # Includes AFK eliminations
-        summary_log.append("☠️ <b>Eliminations</b>")
-        summary_log.extend(elimination_log)
-        summary_log.append(fancy_separator)
+        summary_log.append(build_card("ELIMINATIONS", elimination_log, emoji="☠️"))
 
     # --- Final Survivor List ---
     alive_ids = game.get_alive_players()
-    summary_log.append(f"📊 <b>Survivors ({len(alive_ids)})</b>")
+    survivor_lines = []
     if alive_ids:
         player_stats_list = [
             (uid, game.players[uid]['hp'], game.players[uid]['stats'].get('kills', 0), game.players[uid]['position'])
@@ -5222,9 +5385,10 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
             player = game.players[uid]
             name = mention(uid)
             hp_indicator = get_hp_indicator(hp, player['max_hp'])
-            summary_log.append(f"  {i}. {hp_indicator} {name} - {int(hp)} HP | {kills} Kills @ ({pos[0]},{pos[1]})")
+            survivor_lines.append(f"{i}. {hp_indicator} {name} ➔ {int(hp)} HP | {kills} Kills @ ({pos[0]},{pos[1]})")
     else:
-        summary_log.append("  ( No survivors )")
+        survivor_lines.append("( No survivors )")
+    summary_log.append(build_card(f"SURVIVORS ({len(alive_ids)})", survivor_lines, emoji="🛸"))
 
     # --- Send Summary ---
     summary_text = "\n".join(summary_log)
@@ -5272,9 +5436,9 @@ async def continue_next_day(context: ContextTypes.DEFAULT_TYPE, game: Game):
 
     await safe_send(context, game.chat_id, next_day_text, parse_mode=ParseMode.HTML)
 
-    # Send/refresh the interactive button map
-    await safe_send(context, game.chat_id, game.get_map_header_card(), parse_mode=ParseMode.HTML)
-    map_msg = await safe_send(context, game.chat_id, "🗺 Tap a cell to inspect it:", reply_markup=game.get_map_keyboard())
+    # Send/refresh the visual battle map
+    map_msg = await safe_send_photo(context, game.chat_id, render_map_image(game),
+                                    caption=game.get_map_header_card(), parse_mode=ParseMode.HTML)
     if map_msg:
         game.last_map_message_id = map_msg.message_id
 
@@ -6587,8 +6751,8 @@ async def map_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     header_card = game.get_map_header_card()
-    keyboard = game.get_map_keyboard(viewer_id=user_id)
-    await safe_send(context, chat_id, header_card, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    await safe_send_photo(context, chat_id, render_map_image(game, viewer_id=user_id),
+                          caption=header_card, parse_mode=ParseMode.HTML)
 
 
 async def position_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
