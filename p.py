@@ -122,14 +122,21 @@ def pack_buttons(buttons: list, per_row: int = 2) -> InlineKeyboardMarkup:
 
 
 def build_map_grid(size: int, cell_state_fn, callback_prefix: str = "shipmap") -> InlineKeyboardMarkup:
-    """Builds a clickable inline-button grid. cell_state_fn(r, c) -> state key in CELL_ICONS."""
+    """Builds a clickable inline-button grid.
+    cell_state_fn(r, c) -> either a state key in CELL_ICONS, or a (state, count) tuple
+    when more than one ship occupies the same cell (count is shown as a badge)."""
     rows = []
     for r in range(size):
         row = []
         for c in range(size):
-            state = cell_state_fn(r, c)
+            result = cell_state_fn(r, c)
+            if isinstance(result, tuple):
+                state, count = result
+            else:
+                state, count = result, 1
             icon = CELL_ICONS.get(state, CELL_ICONS["unknown"])
-            row.append(InlineKeyboardButton(icon, callback_data=f"{callback_prefix}:{r}:{c}"))
+            label = f"{icon}{count}" if count and count > 1 else icon
+            row.append(InlineKeyboardButton(label, callback_data=f"{callback_prefix}:{r}:{c}"))
         rows.append(row)
     return InlineKeyboardMarkup(rows)
 
@@ -449,49 +456,52 @@ fix_corrupted_coins_in_db()
 # 🎬 ======================== GIF COLLECTIONS ======================== 🎬
 # Used for dynamic messages like joining, starting, winning etc.
 GIFS = {
+    # 🚧 TEMP PLACEHOLDERS — replace these with your own GIF URLs later.
+    # These are stable, publicly hotlinkable Wikimedia URLs so send_animation actually works in the meantime.
     'joining': [
-        'https://t.me/ttwusvsjssnsbsjsnsbsns/4919'
+        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
     ],
     'start': [
-        'https://t.me/ttwusvsjssnsbsjsnsbsns/4902'
+        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
     ],
     'operation': [
-        'https://t.me/ttwusvsjssnsbsjsnsbsns/4903'
+        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
     ],
     'day_summary': [
-        'https://t.me/ttwusvsjssnsbsjsnsbsns/4904'
+        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
     ],
     'victory': [
-        'https://t.me/ttwusvsjssnsbsjsnsbsns/4900'
+        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
     ],
     'eliminated': [
-        'https://t.me/ttwusvsjssnsbsjsnsbsns/4905'
+        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
     ],
     'extend': [
-        'https://t.me/ttwusvsjssnsbsjsnsbsns/4911'
+        'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
     ],
-    'event': 'https://t.me/ttwusvsjssnsbsjsnsbsns/4901',
-    'meteor': 'https://t.me/ttwusvsjssnsbsjsnsbsns/4910',
-    'boost': 'https://t.me/ttwusvsjssnsbsjsnsbsns/4908'
+    'event': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif',
+    'meteor': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif',
+    'boost': 'https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif'
 }
 
 # 🖼️ ======================== IMAGE COLLECTIONS ======================== 🖼️
 # Static images for command responses (Fancy UI)
-# IMPORTANT: Replace placeholders with your actual image URLs for best effect.
+# 🚧 TEMP PLACEHOLDERS — replace these with your own image URLs later.
+# Using a stable, publicly hotlinkable Wikimedia space image so send_photo actually works in the meantime.
 IMAGES = {
-    'start':        'https://t.me/WildBunchGC/617878', # Fancy space background
-    'help':         'https://t.me/WildBunchGC/617878', # Futuristic console/help screen
-    'rules':        'https://t.me/WildBunchGC/617878', # Stylized rulebook/scroll
-    'stats_admin':  'https://t.me/WildBunchGC/617878', # Data visualization/dashboard
-    'mystats':      'https://t.me/WildBunchGC/617878', # Player profile card
-    'leaderboard':  'https://t.me/WildBunchGC/617878', # Holographic leaderboard/podium
-    'shop':         'https://t.me/WildBunchGC/617878', # Sci-fi marketplace
-    'daily':        'https://t.me/WildBunchGC/617878', # Glowing coins/treasure
-    'achievements': 'https://t.me/WildBunchGC/617878', # Collection of medals/badges
-    'compare':      'https://t.me/WildBunchGC/617878', # Versus screen effect
-    'tips':         'https://t.me/WildBunchGC/617878', # Bright idea/strategy lightbulb
-    'history':      'https://t.me/WildBunchGC/617878', # Old log book/archive screen
-    'default':      'https://t.me/WildBunchGC/617878'  # Generic space theme fallback
+    'start':        'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'help':         'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'rules':        'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'stats_admin':  'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'mystats':      'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'leaderboard':  'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'shop':         'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'daily':        'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'achievements': 'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'compare':      'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'tips':         'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'history':      'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
+    'default':      'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg'
 }
 
 # ⚙️ ======================== GAME CONSTANTS ======================== ⚙️
@@ -924,6 +934,15 @@ def trigger_cosmic_event() -> tuple[Union[str, None], Union[dict, None]]:
 # Stores active Game objects, keyed by chat_id
 games: dict[int, 'Game'] = {}
 
+
+def find_active_game_for_player(user_id: int) -> Union[tuple[int, 'Game'], tuple[None, None]]:
+    """Scans all active games and returns (chat_id, game) for the one this player is in.
+    Needed because /map, /myhp, /ranking are DM-only, but game state is keyed by group chat_id."""
+    for chat_id, game in games.items():
+        if game.is_active and user_id in game.players:
+            return chat_id, game
+    return None, None
+
 # 🎲 ======================== GAME CLASS ======================== 🎲
 # Represents and manages a single game instance
 
@@ -938,6 +957,7 @@ class Game:
         self.spectators: set[int] = set()    # {user_id}
         self.day: int = 0                     # Game round counter
         self.joining_message_id: Union[int, None] = None # Message with Join/Team buttons
+        self.last_map_message_id: Union[int, None] = None # Latest interactive map message
         self.is_joining: bool = False         # True during player join phase
         self.is_active: bool = False          # True during active battle rounds
         self.join_end_time: Union[datetime, None] = None
@@ -1149,7 +1169,7 @@ class Game:
 
                 symbol = "?" # Default unknown symbol
                 if alive_here:
-                    symbol = "🚢" # Ship emoji
+                    symbol = "🚢" if len(alive_here) == 1 else f"🚢{len(alive_here)}"
                 elif cell_ids:
                     symbol = "💀" # Wreck emoji
                 else:
@@ -1190,18 +1210,22 @@ class Game:
         )
 
     def get_map_keyboard(self, viewer_id: Union[int, None] = None) -> InlineKeyboardMarkup:
-        """Builds the clickable inline-button map grid (interactive, no plain-text map)."""
+        """Builds the clickable inline-button map grid (interactive, no plain-text map).
+        Shows every ship in a cell (with a count badge if more than one share a cell).
+        Callback data embeds this game's chat_id so taps resolve correctly even when the
+        map is viewed in a player's DM (not just the group)."""
         def cell_state(r, c):
             cell_ids = self.map_grid[r][c]
             alive_here = [uid for uid in cell_ids if self.players.get(uid, {}).get('alive')]
+            count = len(alive_here)
+            if not alive_here:
+                if cell_ids:
+                    return "destroyed"
+                return "safe" if self.is_in_safe_zone(r, c) else "unknown"
             if viewer_id is not None and viewer_id in alive_here:
-                return "self"
-            if any(uid != viewer_id for uid in alive_here):
-                return "enemy"
-            if cell_ids and not alive_here:
-                return "destroyed"
-            return "safe" if self.is_in_safe_zone(r, c) else "unknown"
-        return build_map_grid(self.map_size, cell_state, callback_prefix="shipmap")
+                return ("self", count)
+            return ("enemy", count)
+        return build_map_grid(self.map_size, cell_state, callback_prefix=f"shipmap:{self.chat_id}")
 
     def get_player_rank(self, user_id: int) -> int:
         """Gets player's rank among the currently alive players."""
@@ -2465,10 +2489,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await safe_send_photo(
-        context=context, chat_id=chat_id, photo_url=get_random_image('help'),
-        caption=help_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML
-    )
+    await safe_send(context, chat_id, help_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 # 📚 ======================== HELP COMMAND CALLBACKS ======================== 📚
 
@@ -2543,6 +2564,7 @@ Configure game rules for groups (Group Admins) or manage the bot (Owner).
 <b>Group Admin Commands:</b>
 - /settings : Open the settings panel (tap buttons to change join time, action time, min players, spectators).
 - /tutorial : Step-by-step guide on how to play.
+- 🚀 Force Start : Button on the muster board (admin-only, asks for confirmation) to skip the join timer.
 - /extend : Add 30 seconds to the current join timer.
 - /endgame : Immediately terminate the current game in this group.
 
@@ -2606,18 +2628,19 @@ Loot wisely, manage your cargo, and dominate! 🎒
 
     # --- Edit the message ---
     try:
-        await query.edit_message_caption(
-            caption=text,
+        await query.edit_message_text(
+            text=text,
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML
         )
     except BadRequest as e:
         if 'message is not modified' not in str(e).lower():
             logger.warning(f"⚠️ Failed to edit help message: {e}")
-            await query.answer("Error updating help. Please use /help again.", show_alert=True)
+            # Fall back to sending a fresh message instead of leaving the user stuck
+            await safe_send(context, query.message.chat_id, text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"❌ Unexpected error editing help: {e}", exc_info=True)
-        await query.answer("An error occurred. Please use /help again.", show_alert=True)
+        await safe_send(context, query.message.chat_id, text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
 async def help_main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2645,16 +2668,18 @@ async def help_main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- Edit the message ---
     try:
-        await query.edit_message_caption(
-            caption=help_text,
+        await query.edit_message_text(
+            text=help_text,
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML
         )
     except BadRequest as e:
         if 'message is not modified' not in str(e).lower():
             logger.warning(f"⚠️ Failed to edit back to main help menu: {e}")
+            await safe_send(context, query.message.chat_id, help_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"❌ Unexpected error editing back to main help: {e}", exc_info=True)
+        await safe_send(context, query.message.chat_id, help_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 # --- 📜 Rules Command ---
 async def tutorial_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3614,46 +3639,63 @@ async def start_solo_mode_after_voting(context: ContextTypes.DEFAULT_TYPE, game:
     game.is_joining = True
     game.join_end_time = datetime.now() + timedelta(seconds=game.settings['join_time'])
 
-    # Prepare a dummy message object to pass for editing
+    # Announce the start of the joining phase first
+    announce_msg = await safe_send(
+        context, game.chat_id,
+        f"⚔️ <b>Solo Battle Joining Phase Started!</b> ⚔️\nMap: {escape_markdown_value(MAPS[game.map_type]['name'])}\n\nCaptains, use the <code>/join</code> command to enter the fray! The muster board will appear shortly.",
+        parse_mode=ParseMode.HTML
+    )
+
+    # Start the countdown timer for the joining phase immediately (doesn't wait on the muster card)
+    asyncio.create_task(joining_countdown(context, game))
+
+    # Wait 30s, then post the pinned muster board and clean up the announcement
+    await asyncio.sleep(30)
+    if game.chat_id not in games or not game.is_joining:
+        return  # Game may have already been cancelled/started
+
     mock_message = type('obj', (object,), {
         'message_id': game.joining_message_id,
         'chat_id': game.chat_id
     })
-
-    # Display the initial joining message (editing the map vote message)
     await display_joining_phase(mock_message, context, game, edit=True)
     await pin_message(context, game.chat_id, game.joining_message_id)
 
-    # Announce the start of the joining phase
-    await safe_send(
-        context, game.chat_id,
-        f"⚔️ <b>Solo Battle Joining Phase Started!</b> ⚔️\nMap: {escape_markdown_value(MAPS[game.map_type]['name'])}\n\nCaptains, use the <code>/join</code> command or the button above to enter the fray!",
-        parse_mode=ParseMode.HTML
-    )
-
-    # Start the countdown timer for the joining phase
-    asyncio.create_task(joining_countdown(context, game))
+    if announce_msg:
+        try:
+            await context.bot.delete_message(game.chat_id, announce_msg.message_id)
+        except Exception:
+            pass
 
 async def start_team_mode_after_voting(context: ContextTypes.DEFAULT_TYPE, game: Game):
     """Initiates the team game joining phase after map selection."""
     game.is_joining = True
     game.join_end_time = datetime.now() + timedelta(seconds=game.settings['join_time'])
 
-    mock_message = type('obj', (object,), {
-        'message_id': game.joining_message_id,
-        'chat_id': game.chat_id
-    })
-
-    await display_team_joining_phase(mock_message, context, game, edit=True)
-    await pin_message(context, game.chat_id, game.joining_message_id)
-
-    await safe_send(
+    announce_msg = await safe_send(
         context, game.chat_id,
-        f"🤝 <b>Team Battle Joining Phase Started!</b> 🤝\nMap: {escape_markdown_value(MAPS[game.map_type]['name'])}\nMode: Alpha 🔵 vs Beta 🔴\n\nChoose your allegiance using the buttons above!",
+        f"🤝 <b>Team Battle Joining Phase Started!</b> 🤝\nMap: {escape_markdown_value(MAPS[game.map_type]['name'])}\nMode: Alpha 🔵 vs Beta 🔴\n\nThe muster board will appear shortly — choose your allegiance there!",
         parse_mode=ParseMode.HTML
     )
 
     asyncio.create_task(joining_countdown(context, game))
+
+    await asyncio.sleep(30)
+    if game.chat_id not in games or not game.is_joining:
+        return
+
+    mock_message = type('obj', (object,), {
+        'message_id': game.joining_message_id,
+        'chat_id': game.chat_id
+    })
+    await display_team_joining_phase(mock_message, context, game, edit=True)
+    await pin_message(context, game.chat_id, game.joining_message_id)
+
+    if announce_msg:
+        try:
+            await context.bot.delete_message(game.chat_id, announce_msg.message_id)
+        except Exception:
+            pass
 
 async def display_team_joining_phase(message, context: ContextTypes.DEFAULT_TYPE, game: Game, edit: bool = False):
     """Displays or updates the team joining message (Fancy UI)."""
@@ -3712,6 +3754,9 @@ Choose your side, Captain! Victory awaits the coordinated!
         [
             InlineKeyboardButton("❌ Abandon Ship", callback_data=f"leave_game_{game.chat_id}"),
             InlineKeyboardButton("🔭 Spectate", callback_data=f"spectate_{game.chat_id}")
+        ],
+        [
+            InlineKeyboardButton("🚀 Force Start (Admin)", callback_data=f"forcestart_ask_{game.chat_id}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -3775,7 +3820,7 @@ async def handle_team_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
             game.teams[team_choice].add(user_id)
             game.players[user_id]['team'] = team_choice
             team_emoji = '🔵' if team_choice == 'alpha' else '🔴'
-            await safe_send(context, chat_id, f"🔄 {escape_markdown_value(first_name)} switched allegiance to Team {team_choice.capitalize()}! {team_emoji}")
+            await safe_send(context, chat_id, f"🔄 {mention(user_id, first_name)} switched allegiance to Team {team_choice.capitalize()}! {team_emoji}", parse_mode=ParseMode.HTML)
             await query.answer(f"✅ Switched to Team {team_choice.capitalize()}!")
     else:
         # Add new player
@@ -3789,7 +3834,7 @@ async def handle_team_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title_emoji = PLAYER_TITLES[title_key]['emoji']
             team_emoji = '🔵' if team_choice == 'alpha' else '🔴'
             await safe_send(context, chat_id,
-                            f"✨ {title_emoji} {escape_markdown_value(first_name)} joins Team {team_choice.capitalize()}! {team_emoji}")
+                            f"✨ {title_emoji} {mention(user_id, first_name)} joins Team {team_choice.capitalize()}! {team_emoji}", parse_mode=ParseMode.HTML)
             await query.answer(f"✅ Welcome to Team {team_choice.capitalize()}!")
         else:
             await query.answer(f"❌ {msg}", show_alert=True)
@@ -3839,6 +3884,7 @@ async def display_joining_phase(message, context: ContextTypes.DEFAULT_TYPE, gam
     keyboard = pack_buttons([
         InlineKeyboardButton("✅ Join Battle", callback_data=f"join_game_{game.chat_id}"),
         InlineKeyboardButton("❌ Withdraw", callback_data=f"leave_game_{game.chat_id}"),
+        InlineKeyboardButton("🚀 Force Start (Admin)", callback_data=f"forcestart_ask_{game.chat_id}"),
     ], per_row=2)
     reply_markup = keyboard
 
@@ -3920,8 +3966,84 @@ async def joining_countdown(context: ContextTypes.DEFAULT_TYPE, game: Game):
             del games[game.chat_id]
 
 
-# ✨ ======================== START GAME PHASE ======================== ✨
+# --- 🚀 Force Start (Admin Only, via button) ---
+async def handle_forcestart_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the 'Force Start' button on the muster board. Admin-only, asks for confirmation."""
+    query = update.callback_query
+    user_id = query.from_user.id
+    try:
+        chat_id = int(query.data.rsplit('_', 1)[1])
+    except (ValueError, IndexError):
+        await query.answer("⚠️ Malformed request.", show_alert=True)
+        return
 
+    if not await is_admin_or_owner(context, chat_id, user_id):
+        await query.answer("🚫 Only group admins can force-start a game.", show_alert=True)
+        return
+
+    game = games.get(chat_id)
+    if not game or not game.is_joining:
+        await query.answer("ℹ️ No game is currently in the joining phase.", show_alert=True)
+        return
+
+    min_players = game.settings.get('min_players', 2)
+    current_players = len(game.players)
+    if current_players < min_players:
+        await query.answer(
+            f"⚠️ Need at least {min_players} captains to force-start, only {current_players} joined so far.",
+            show_alert=True
+        )
+        return
+
+    await query.answer()
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Yes, force start", callback_data=f"confirm_forcestart_{user_id}_{chat_id}"),
+        InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_forcestart_{user_id}_{chat_id}"),
+    ]])
+    await safe_send(
+        context, chat_id,
+        f"🚀 {mention(user_id)}, are you sure you want to <b>force start</b> the battle now with {current_players} captains, "
+        f"skipping the rest of the join timer?",
+        reply_markup=keyboard, parse_mode=ParseMode.HTML
+    )
+
+
+async def handle_forcestart_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the Yes/No buttons from the /forcestart confirmation prompt."""
+    query = update.callback_query
+    data = query.data
+    try:
+        action, _, requester_id_str, chat_id_str = data.split('_', 3)
+        requester_id = int(requester_id_str)
+        chat_id = int(chat_id_str)
+    except ValueError:
+        await query.answer("⚠️ Malformed request.", show_alert=True)
+        return
+
+    if query.from_user.id != requester_id:
+        await query.answer("✋ Only the admin who ran /forcestart can confirm this.", show_alert=True)
+        return
+
+    if data.startswith("cancel_forcestart_"):
+        await query.answer("Cancelled.")
+        await query.edit_message_text("✅ Force start cancelled — the join timer continues.")
+        return
+
+    game = games.get(chat_id)
+    if not game or not game.is_joining:
+        await query.answer("ℹ️ Joining phase already ended.", show_alert=True)
+        await query.edit_message_text("ℹ️ Joining phase has already ended.")
+        return
+
+    await query.answer("🚀 Starting now!")
+    await query.edit_message_text(f"🚀 {mention(requester_id)} force-started the battle!", parse_mode=ParseMode.HTML)
+
+    game.is_joining = False  # Stops the joining_countdown loop on its next check
+    await start_game_phase(context, game)
+
+
+
+# ✨ ======================== START GAME PHASE ======================== ✨
 async def start_game_phase(context: ContextTypes.DEFAULT_TYPE, game: Game):
     """Checks player count and starts the actual battle phase (Fancy UI)."""
     chat_id = game.chat_id
@@ -3972,7 +4094,6 @@ async def start_game_phase(context: ContextTypes.DEFAULT_TYPE, game: Game):
     logger.info(f"🚀 Starting Day 1 for game in chat {chat_id}. Mode: {game.mode}. Players: {current_players}")
 
     mode_display = "Solo Combat" if game.mode == 'solo' else f"Team Skirmish (Alpha 🔵 vs Beta 🔴)"
-    map_display = game.get_map_display() # Get initial map state
     fancy_separator = "⚔️ • ⋅ ⋅ ────────── ⋅ ⋅ • ⚔️"
 
     start_caption = f"""
@@ -3994,13 +4115,17 @@ async def start_game_phase(context: ContextTypes.DEFAULT_TYPE, game: Game):
 
     Captains, check your Direct Messages (DMs) for orders!
     May the most cunning strategist prevail!  LUCK! 🍀
-
-    {map_display}
     """
 
     # Send start announcement with GIF
     await safe_send_animation(context, chat_id, get_random_gif('start'),
                               caption=start_caption, parse_mode=ParseMode.HTML)
+
+    # Send the interactive button map as its own message (tap any cell for info)
+    await safe_send(context, chat_id, game.get_map_header_card(), parse_mode=ParseMode.HTML)
+    map_msg = await safe_send(context, chat_id, "🗺 Tap a cell to inspect it:", reply_markup=game.get_map_keyboard())
+    if map_msg:
+        game.last_map_message_id = map_msg.message_id
 
     # --- Send Initial Action Prompts via DM ---
     alive_ids_start = game.get_alive_players()
@@ -4049,7 +4174,7 @@ async def handle_join_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
             stats = get_player_stats(user_id)
             title_key = stats[18] if stats and len(stats) > 18 and stats[18] in PLAYER_TITLES else 'novice_captain'
             title_emoji = PLAYER_TITLES[title_key]['emoji']
-            await safe_send(context, chat_id, f"✅ {title_emoji} {escape_markdown_value(first_name)} has joined the battle!")
+            await safe_send(context, chat_id, f"✅ {title_emoji} {mention(user_id, first_name)} has joined the battle!", parse_mode=ParseMode.HTML)
             await query.answer("🚀 Welcome aboard!")
         else:
             await query.answer(f"❌ {msg}", show_alert=True)
@@ -4069,7 +4194,7 @@ async def handle_join_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Remove from players dict
             del game.players[user_id]
 
-            await safe_send(context, chat_id, f"💨 {escape_markdown_value(first_name)} has withdrawn from the muster.")
+            await safe_send(context, chat_id, f"💨 {mention(user_id, first_name)} has withdrawn from the muster.", parse_mode=ParseMode.HTML)
             await query.answer("✅ You have left the game.")
         else:
             await query.answer("❓ You were not in the game.", show_alert=False)
@@ -4084,39 +4209,14 @@ async def handle_join_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ✨ ======================== IN-GAME ACTION MESSAGES (DM) ======================== ✨
 
 async def send_operation_choice_button(context: ContextTypes.DEFAULT_TYPE, game: Game, user_id: int):
-    """Sends the initial prompt to the user's DM to choose an action."""
+    """Sends the player's command console (with real action buttons) straight to their DM.
+    If delivery fails (most commonly because the player never pressed /start in DM with
+    the bot), this now alerts the group instead of failing silently."""
     if user_id not in game.players: return # Safety check
-
-    player = game.players[user_id]
-    hp = player.get('hp', 0)
-    max_hp = player.get('max_hp', HP_START)
-    afk = player.get('afk_turns', 0)
-    time_left = game.settings.get('operation_time', 120)
-
-    # Fancy prompt message sent to DM
-    prompt_text = f"""
-🚢 <b>Captain's Orders - Day {game.day}</b>
-
-<b>Status:</b> {get_hp_indicator(hp, max_hp)} {hp}/{max_hp} HP | ⚠️ AFK Strikes: {afk}/{AFK_TURNS_LIMIT}
-<b>Time:</b> {format_time(time_left)} remaining
-
-Click below to access your command console! 👇
-"""
-
-    bot_link_username = context.bot.username or BOT_USERNAME
-    # Include game chat ID in start payload for context? Optional but potentially useful.
-    # start_payload = f"game_{game.chat_id}" # Example if needed later
-    keyboard = [[
-        InlineKeyboardButton("📡 Open Command Console 📡", url=f"https://t.me/{bot_link_username}")
-        # InlineKeyboardButton("📡 Open Command Console 📡", url=f"https://t.me/{bot_link_username}?start={start_payload}") # With payload
-    ]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    # Send the prompt to the player's private chat
-    await safe_send(context, user_id, prompt_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-
-    # Immediately follow up with the full action panel in DM
-    await send_operation_dm(context, game, user_id)
+    sent = await send_operation_dm(context, game, user_id)
+    if sent is None:
+        first_name = game.players[user_id].get('first_name', 'Captain')
+        await send_dm_registration_alert(context, game.chat_id, first_name, user_id)
 
 
 async def send_operation_dm(context: ContextTypes.DEFAULT_TYPE, game: Game, user_id: int):
@@ -4201,10 +4301,9 @@ async def send_operation_dm(context: ContextTypes.DEFAULT_TYPE, game: Game, user
         InlineKeyboardButton(ACTION_LABELS["move"], callback_data=f"operation_move_{user_id}_{game.chat_id}"),
     ], per_row=2)
 
-    # --- Send Animation with Caption ---
-    gif_url = get_random_gif('operation')
-    await safe_send_animation(
-        context, user_id, gif_url, caption=caption,
+    # --- Send as plain text (reliable — no dependency on external GIF hosting) ---
+    return await safe_send(
+        context, user_id, caption,
         reply_markup=keyboard, parse_mode=ParseMode.HTML
     )
 
@@ -4235,7 +4334,7 @@ async def handle_operation_selection(update: Update, context: ContextTypes.DEFAU
     game = games.get(op_chat_id)
     if not game:
         await query.answer("⚠️ Game not found or has ended.", show_alert=True)
-        try: await query.edit_message_caption(caption="❌ This game session has concluded.") # Clean up DM
+        try: await query.edit_message_text("❌ This game session has concluded.") # Clean up DM
         except: pass
         return
 
@@ -4289,8 +4388,8 @@ async def show_target_selection(query: Update.callback_query, context: ContextTy
         keyboard = [[InlineKeyboardButton("◀ Return to Console", callback_data=f"operation_back_{user_id}_{chat_id}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
-            # Edit the message (caption of the animation)
-            await query.edit_message_caption(caption=no_target_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            # Edit the message (plain text console)
+            await query.edit_message_text(no_target_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         except BadRequest as e:
             # Ignore "message not modified" error, log others
             if 'message is not modified' not in str(e).lower():
@@ -4337,7 +4436,7 @@ async def show_target_selection(query: Update.callback_query, context: ContextTy
     <b>Legend:</b> 🟢 High HP | 🟡 Med HP | 🔴 Low HP
     """
     try:
-        await query.edit_message_caption(caption=target_prompt, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        await query.edit_message_text(target_prompt, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     except BadRequest as e:
          if 'message is not modified' not in str(e).lower():
               logger.warning(f"⚠️ Failed to edit target selection message: {e}")
@@ -4401,7 +4500,7 @@ async def show_move_selection(query: Update.callback_query, context: ContextType
     """
     try:
         # Using Markdown for the code block around the minimap
-        await query.edit_message_caption(caption=move_prompt, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        await query.edit_message_text(move_prompt, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     except BadRequest: pass # Ignore if not modified
 
 async def set_operation(query: Update.callback_query, context: ContextTypes.DEFAULT_TYPE, game: Game, user_id: int, operation: str, target_id: Union[int, None], chat_id: int):
@@ -4470,9 +4569,9 @@ async def set_operation(query: Update.callback_query, context: ContextTypes.DEFA
 
     # --- Edit DM Message ---
     try:
-        # Edit the caption of the message that had the action buttons
-        await query.edit_message_caption(
-            caption=confirmation_text,
+        # Edit the text of the message that had the action buttons
+        await query.edit_message_text(
+            confirmation_text,
             reply_markup=reply_markup, # Show link back to group if available
             parse_mode=ParseMode.HTML
         )
@@ -4570,7 +4669,7 @@ async def operation_countdown(context: ContextTypes.DEFAULT_TYPE, game: Game):
 
 # --- 🛑 End Game Command (Admin) ---
 async def endgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Forcefully ends the current game in the group (Admin/Owner only)."""
+    """Forcefully ends the current game in the group (Admin/Owner only). Asks for confirmation first."""
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
 
@@ -4586,20 +4685,58 @@ async def endgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_send(context, chat_id, "🚫 You do not have permission to end the game.")
         return
 
-    game = games[chat_id]
-    game.is_active = False # Stop processing loops
-    game.is_joining = False
-    game.operation_end_time = None # Stop countdown
-
-    logger.warning(f"🛑 Game in chat {chat_id} force-ended by admin {user_id}.")
-
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Yes, end it", callback_data=f"confirm_endgame_{user_id}_{chat_id}"),
+        InlineKeyboardButton("❌ No, cancel", callback_data=f"cancel_endgame_{user_id}_{chat_id}"),
+    ]])
     await safe_send(
         context, chat_id,
-        f"🛑 <b>Game Terminated by Admin!</b> 🛑\n\nCaptain {escape_markdown_value(update.effective_user.first_name)} has ended the current battle.\nNo stats will be recorded for this session.",
+        f"⚠️ {mention(user_id)}, are you sure you want to <b>forcefully end</b> the current battle? "
+        f"No stats will be recorded for this session.",
+        reply_markup=keyboard, parse_mode=ParseMode.HTML
+    )
+
+
+async def handle_endgame_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the Yes/No buttons from the /endgame confirmation prompt."""
+    query = update.callback_query
+    data = query.data
+    try:
+        action, _, requester_id_str, chat_id_str = data.split('_', 3)
+        requester_id = int(requester_id_str)
+        chat_id = int(chat_id_str)
+    except ValueError:
+        await query.answer("⚠️ Malformed request.", show_alert=True)
+        return
+
+    if query.from_user.id != requester_id:
+        await query.answer("✋ Only the admin who ran /endgame can confirm this.", show_alert=True)
+        return
+
+    if data.startswith("cancel_endgame_"):
+        await query.answer("Cancelled.")
+        await query.edit_message_text("✅ Endgame cancelled — the battle continues.")
+        return
+
+    # Confirmed
+    if chat_id not in games:
+        await query.answer("ℹ️ Game already ended.", show_alert=True)
+        await query.edit_message_text("ℹ️ No game is currently active in this chat.")
+        return
+
+    game = games[chat_id]
+    game.is_active = False
+    game.is_joining = False
+    game.operation_end_time = None
+
+    logger.warning(f"🛑 Game in chat {chat_id} force-ended by admin {requester_id}.")
+
+    await query.answer("🛑 Game ended.")
+    await query.edit_message_text(
+        f"🛑 <b>Game Terminated by Admin!</b> 🛑\n\n{mention(requester_id)} has ended the current battle.\nNo stats will be recorded for this session.",
         parse_mode=ParseMode.HTML
     )
 
-    # Clean up the game state
     del games[chat_id]
 
 # ✨ ======================== CORE GAME LOGIC ======================== ✨
@@ -5053,18 +5190,20 @@ async def continue_next_day(context: ContextTypes.DEFAULT_TYPE, game: Game):
     logger.info(f"Continuing to Day {game.day} for game in chat {game.chat_id}")
     await asyncio.sleep(3) # Short pause before next day starts
 
-    map_display = game.get_map_display() # Get updated map
-
     # Fancy announcement for the new day
     next_day_text = f"""
     ☀️ <b>Day {game.day} Dawns!</b> ☀️
 
     The battle continues! Check your DMs to issue new orders, Captains.
-
-    {map_display}
     """
 
     await safe_send(context, game.chat_id, next_day_text, parse_mode=ParseMode.HTML)
+
+    # Send/refresh the interactive button map
+    await safe_send(context, game.chat_id, game.get_map_header_card(), parse_mode=ParseMode.HTML)
+    map_msg = await safe_send(context, game.chat_id, "🗺 Tap a cell to inspect it:", reply_markup=game.get_map_keyboard())
+    if map_msg:
+        game.last_map_message_id = map_msg.message_id
 
     # Send action prompts to all living players
     alive_ids = game.get_alive_players()
@@ -6275,7 +6414,7 @@ async def join_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         stats = get_player_stats(user.id)
         title_key = stats[18] if stats and len(stats) > 18 and stats[18] in PLAYER_TITLES else 'novice_captain'
         title_emoji = PLAYER_TITLES[title_key]['emoji']
-        await safe_send(context, chat_id, f"✅ Welcome aboard! {title_emoji} Captain {escape_markdown_value(user.first_name)} has joined the fleet!")
+        await safe_send(context, chat_id, f"✅ Welcome aboard! {title_emoji} {mention(user.id, user.first_name)} has joined the fleet!", parse_mode=ParseMode.HTML)
         # Update the joining message
         await display_joining_phase(update.message, context, game, edit=True) # Pass update.message for context
     else:
@@ -6317,7 +6456,7 @@ async def leave_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.warning(f"⚠️ Minor error removing player {user.id} from grid/team during leave: {e}")
 
-    await safe_send(context, chat_id, f"💨 Captain {escape_markdown_value(user.first_name)} has withdrawn from the upcoming battle.")
+    await safe_send(context, chat_id, f"💨 {mention(user.id, user.first_name)} has withdrawn from the upcoming battle.", parse_mode=ParseMode.HTML)
 
     # Update the joining message
     await display_joining_phase(update.message, context, game, edit=True) if game.mode == 'solo' else await display_team_joining_phase(update.message, context, game, edit=True)
@@ -6361,19 +6500,21 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def map_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Displays the current game map (in-game)."""
+    """Displays the current game map. DM only — usable from any active game the player has joined."""
     chat_id = update.effective_chat.id
-    if update.effective_chat.type == 'private':
-        await safe_send(context, chat_id, "🗺️ Map view is only available within an active game group.")
+    user_id = update.effective_user.id
+
+    if update.effective_chat.type != 'private':
+        await safe_send(context, chat_id, "🗺️ This command only works in my DM. Please message me privately and use /map there.")
         return
 
-    if chat_id not in games or not games[chat_id].is_active:
-        await safe_send(context, chat_id, "🗺️ No active battle map to display currently.")
+    game_chat_id, game = find_active_game_for_player(user_id)
+    if not game:
+        await safe_send(context, chat_id, "🗺️ You're not currently part of an active battle.")
         return
 
-    game = games[chat_id]
     header_card = game.get_map_header_card()
-    keyboard = game.get_map_keyboard(viewer_id=update.effective_user.id)
+    keyboard = game.get_map_keyboard(viewer_id=user_id)
     await safe_send(context, chat_id, header_card, reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
 
@@ -6427,18 +6568,22 @@ async def position_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_map_cell_tap(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Answers a tap on the interactive map grid with a quick info popup (view-only, no gameplay effect)."""
+    """Answers a tap on the interactive map grid with a quick info popup (view-only, no gameplay effect).
+    Works whether the map was shown in the group or in a player's DM."""
     query = update.callback_query
-    chat_id = update.effective_chat.id
-    game = games.get(chat_id)
-    if not game or not query.data:
+    if not query.data:
         await query.answer()
         return
     try:
-        _, r_str, c_str = query.data.split(":")
-        r, c = int(r_str), int(c_str)
+        _, chat_id_str, r_str, c_str = query.data.split(":")
+        chat_id, r, c = int(chat_id_str), int(r_str), int(c_str)
     except (ValueError, IndexError):
         await query.answer()
+        return
+
+    game = games.get(chat_id)
+    if not game:
+        await query.answer("⚠️ That battle has ended.", show_alert=False)
         return
 
     cell_ids = game.map_grid[r][c] if 0 <= r < game.map_size and 0 <= c < game.map_size else []
@@ -6454,25 +6599,21 @@ async def handle_map_cell_tap(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def myhp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Shows the user their current HP (in-game)."""
+    """Shows the user their current HP. DM only."""
     user = update.effective_user
     chat_id = update.effective_chat.id
 
-    if update.effective_chat.type == 'private':
-        await safe_send(context, chat_id, "❤️ HP check only works inside an active game group.")
+    if update.effective_chat.type != 'private':
+        await safe_send(context, chat_id, "❤️ This command only works in my DM. Please message me privately and use /myhp there.")
         return
     if is_globally_banned(user.id): return
 
-    if chat_id not in games or not games[chat_id].is_active:
-        await safe_send(context, chat_id, "❤️ No active game to check HP in.")
+    game_chat_id, game = find_active_game_for_player(user.id)
+    if not game:
+        await safe_send(context, chat_id, "❤️ You're not currently part of an active battle.")
         return
 
-    game = games[chat_id]
     player_data = game.players.get(user.id)
-
-    if not player_data:
-        await safe_send(context, chat_id, "❓ You don't seem to be participating in this battle.")
-        return
     if not player_data.get('alive'):
         await safe_send(context, chat_id, "💀 Your ship has been destroyed (0 HP).")
         return
@@ -6535,17 +6676,19 @@ async def inventory_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def ranking_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Shows the current ranking of alive players (in-game)."""
+    """Shows the current ranking of alive players. DM only."""
     chat_id = update.effective_chat.id
-    if update.effective_chat.type == 'private':
-        await safe_send(context, chat_id, "🏆 Ranking view only works inside an active game group.")
+    user_id = update.effective_user.id
+
+    if update.effective_chat.type != 'private':
+        await safe_send(context, chat_id, "🏆 This command only works in my DM. Please message me privately and use /ranking there.")
         return
 
-    if chat_id not in games or not games[chat_id].is_active:
-        await safe_send(context, chat_id, "🏆 No active battle to check rankings for.")
+    game_chat_id, game = find_active_game_for_player(user_id)
+    if not game:
+        await safe_send(context, chat_id, "🏆 You're not currently part of an active battle.")
         return
 
-    game = games[chat_id]
     alive_ids = game.get_alive_players()
 
     if not alive_ids:
@@ -7122,11 +7265,11 @@ def main() -> None:
         application.add_handler(CommandHandler("cancel", cancel_command))
         application.add_handler(CommandHandler("spectate", spectate_command))
         # In-Game Info
-        application.add_handler(CommandHandler("map", map_command, filters=filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("map", map_command))
         application.add_handler(CommandHandler("position", position_command))
-        application.add_handler(CommandHandler("myhp", myhp_command, filters=filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("myhp", myhp_command))
         application.add_handler(CommandHandler("inventory", inventory_command))
-        application.add_handler(CommandHandler("ranking", ranking_command, filters=filters.ChatType.PRIVATE))
+        application.add_handler(CommandHandler("ranking", ranking_command))
         application.add_handler(CommandHandler("dailystats", stats_detailed_command))
         application.add_handler(CommandHandler("stats", stats_detailed_command, filters=filters.ChatType.GROUPS)) # Alias in groups
         # In-Game Actions
@@ -7176,6 +7319,9 @@ def main() -> None:
         application.add_handler(CallbackQueryHandler(handle_move_selection, pattern=r'^move_'))
         application.add_handler(CallbackQueryHandler(handle_shop_selection, pattern=r'^shop_'))
         application.add_handler(CallbackQueryHandler(handle_settings_callback, pattern=r'^settings_'))
+        application.add_handler(CallbackQueryHandler(handle_endgame_confirmation, pattern=r'^(confirm|cancel)_endgame_'))
+        application.add_handler(CallbackQueryHandler(handle_forcestart_confirmation, pattern=r'^(confirm|cancel)_forcestart_'))
+        application.add_handler(CallbackQueryHandler(handle_forcestart_ask, pattern=r'^forcestart_ask_'))
         application.add_handler(CallbackQueryHandler(handle_map_cell_tap, pattern=r'^shipmap:'))
         # Add pattern for spectate button if needed, e.g. pattern=r'^spectate_'
         # application.add_handler(CallbackQueryHandler(handle_spectate_button, pattern=r'^spectate_'))
