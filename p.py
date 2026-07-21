@@ -34,6 +34,9 @@ ACTION_LABELS = {
 CELL_ICONS = {
     "self": "🟢",
     "enemy": "🔴",
+    "team_alpha": "🔵",
+    "team_beta": "🔴",
+    "mixed": "🟣",
     "loot": "🟡",
     "safe": "🟦",
     "destroyed": "⬛",
@@ -1204,7 +1207,9 @@ class Game:
                 f"☀️ Day : {self.day}   🚢 Ships Alive : {alive_count}/{len(self.players)}",
                 f"🌀 Safe Zone : {zone_status}",
                 "",
-                "🟢 You  🔴 Enemy  🟡 Loot  🟦 Safe  ⬛ Destroyed  ⬜ Unknown",
+                ("🔵 Team Alpha  🔴 Team Beta  🟣 Contested  🟡 Loot  🟦 Safe  ⬛ Destroyed"
+                 if self.mode == 'team' else
+                 "🟢 You  🔴 Enemy  🟡 Loot  🟦 Safe  ⬛ Destroyed  ⬜ Unknown"),
             ],
             emoji="🗺",
         )
@@ -1212,6 +1217,9 @@ class Game:
     def get_map_keyboard(self, viewer_id: Union[int, None] = None) -> InlineKeyboardMarkup:
         """Builds the clickable inline-button map grid (interactive, no plain-text map).
         Shows every ship in a cell (with a count badge if more than one share a cell).
+        - Solo mode: 🟢 = you, 🔴 = enemy.
+        - Team mode: 🔵 = Team Alpha, 🔴 = Team Beta (so allies vs enemies are obvious,
+          regardless of who is viewing).
         Callback data embeds this game's chat_id so taps resolve correctly even when the
         map is viewed in a player's DM (not just the group)."""
         def cell_state(r, c):
@@ -1222,6 +1230,16 @@ class Game:
                 if cell_ids:
                     return "destroyed"
                 return "safe" if self.is_in_safe_zone(r, c) else "unknown"
+
+            if self.mode == 'team':
+                # Colour by team, not by viewer — lets everyone tell allies from enemies at a glance
+                teams_here = {self.players.get(uid, {}).get('team') for uid in alive_here}
+                if teams_here == {'alpha'}:
+                    return ("team_alpha", count)
+                if teams_here == {'beta'}:
+                    return ("team_beta", count)
+                return ("mixed", count)  # both teams occupy this cell
+
             if viewer_id is not None and viewer_id in alive_here:
                 return ("self", count)
             return ("enemy", count)
@@ -4529,9 +4547,9 @@ async def set_operation(query: Update.callback_query, context: ContextTypes.DEFA
 
     # --- Assemble Fancy Confirmation ---
     confirmation_text = f"""
-    ✅ <b>Orders Confirmed: {op_info['name']}</b> ✅
+    ✅ <b>Your action has been successfully registered!</b> ✅
 
-    {op_info['desc']}
+    {op_info['name']} — {op_info['desc']}
     """
     if operation == 'attack' and target_id:
         target_name = escape_markdown_value(game.players.get(target_id, {}).get('first_name', f'ID_{target_id}'))
