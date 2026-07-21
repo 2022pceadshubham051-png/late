@@ -492,19 +492,19 @@ GIFS = {
 # 🚧 TEMP PLACEHOLDERS — replace these with your own image URLs later.
 # Using a stable, publicly hotlinkable Wikimedia space image so send_photo actually works in the meantime.
 IMAGES = {
-    'start':        'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'help':         'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'rules':        'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'stats_admin':  'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'mystats':      'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'leaderboard':  'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'shop':         'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'daily':        'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'achievements': 'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'compare':      'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'tips':         'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'history':      'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg',
-    'default':      'https://upload.wikimedia.org/wikipedia/commons/e/ea/Hubble_ultra_deep_field.jpg'
+    'start':        'https://picsum.photos/800/450',
+    'help':         'https://picsum.photos/800/450',
+    'rules':        'https://picsum.photos/800/450',
+    'stats_admin':  'https://picsum.photos/800/450',
+    'mystats':      'https://picsum.photos/800/450',
+    'leaderboard':  'https://picsum.photos/800/450',
+    'shop':         'https://picsum.photos/800/450',
+    'daily':        'https://picsum.photos/800/450',
+    'achievements': 'https://picsum.photos/800/450',
+    'compare':      'https://picsum.photos/800/450',
+    'tips':         'https://picsum.photos/800/450',
+    'history':      'https://picsum.photos/800/450',
+    'default':      'https://picsum.photos/800/450'
 }
 
 # ⚙️ ======================== GAME CONSTANTS ======================== ⚙️
@@ -760,7 +760,9 @@ def format_user_stats(stats_tuple: Union[tuple, None]) -> str:
 # These handle errors gracefully when sending messages/media
 
 async def safe_send(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, reply_markup=None, parse_mode=None, **kwargs):
-    """Safely sends a text message."""
+    """Safely sends a text message. If HTML parsing fails (e.g. a name with a stray
+    '<' or '&' breaking entity parsing), automatically retries as plain text instead
+    of silently dropping the message — buttons/keyboard are preserved either way."""
     try:
         msg = await context.bot.send_message(
             chat_id=chat_id, text=text, reply_markup=reply_markup,
@@ -770,7 +772,17 @@ async def safe_send(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str,
     except Forbidden:
         logger.warning(f"🚫 Blocked/Kicked: Cannot send text to {chat_id}.")
     except BadRequest as e:
-        if 'message is not modified' not in str(e).lower(): # Ignore this common error
+        err_str = str(e).lower()
+        if 'message is not modified' in err_str:
+            pass  # Ignore this common error
+        elif parse_mode and ("can't parse entities" in err_str or "unsupported start tag" in err_str):
+            # Likely a malformed-HTML issue, not a real delivery failure — retry as plain text
+            logger.warning(f"⚠️ HTML parse error sending to {chat_id}, retrying as plain text: {e}")
+            try:
+                return await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, **kwargs)
+            except Exception as e2:
+                logger.error(f"❌ Plain-text retry also failed for {chat_id}: {e2}")
+        else:
             logger.error(f"❌ Bad Request (Text): Chat {chat_id}, Error: {e}")
     except TelegramError as e:
         logger.error(f"❌ Telegram Error (Text): Chat {chat_id}, Error: {e}")
@@ -4251,13 +4263,33 @@ async def handle_join_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def send_operation_choice_button(context: ContextTypes.DEFAULT_TYPE, game: Game, user_id: int):
     """Sends the player's command console (with real action buttons) straight to their DM.
-    If delivery fails (most commonly because the player never pressed /start in DM with
-    the bot), this now alerts the group instead of failing silently."""
+    If delivery fails, this alerts the group — with an accurate reason based on whether
+    the player is actually registered (DB-level) or not, instead of always assuming
+    they never pressed /start."""
     if user_id not in game.players: return # Safety check
     sent = await send_operation_dm(context, game, user_id)
-    if sent is None:
-        first_name = game.players[user_id].get('first_name', 'Captain')
+    if sent is not None:
+        return
+
+    first_name = game.players[user_id].get('first_name', 'Captain')
+    if not is_player_registered(user_id):
+        # Genuinely never completed DM registration — the classic case
         await send_dm_registration_alert(context, game.chat_id, first_name, user_id)
+        return
+
+    # Already registered in our DB, but the DM still failed to deliver — most likely they
+    # blocked the bot, or Telegram briefly rejected delivery. One retry, then alert honestly.
+    logger.warning(f"⚠️ DM console failed for already-registered user {user_id}; retrying once.")
+    retry_sent = await send_operation_dm(context, game, user_id)
+    if retry_sent is not None:
+        return
+
+    await safe_send(
+        context, game.chat_id,
+        f"⚠️ {mention(user_id, first_name)}, I couldn't deliver your action console to DM. "
+        f"Please open a DM with me and send /start once to refresh the connection, then I'll resend it.",
+        parse_mode=ParseMode.HTML
+    )
 
 
 async def send_operation_dm(context: ContextTypes.DEFAULT_TYPE, game: Game, user_id: int):
@@ -4288,7 +4320,7 @@ async def send_operation_dm(context: ContextTypes.DEFAULT_TYPE, game: Game, user
             if item:
                 rarity_color = get_rarity_color(item['rarity'])
                 inventory_lines.append(f"  {rarity_color} {item['emoji']} {item_key.replace('_', ' ').title()} (x{count})")
-    inventory_display = "\n".join(inventory_lines) if inventory_lines else "  < Empty >"
+    inventory_display = "\n".join(inventory_lines) if inventory_lines else "  ( Empty )"
 
     # --- Format Team / Alliance ---
     team_display = ""
@@ -5192,7 +5224,7 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
             hp_indicator = get_hp_indicator(hp, player['max_hp'])
             summary_log.append(f"  {i}. {hp_indicator} {name} - {int(hp)} HP | {kills} Kills @ ({pos[0]},{pos[1]})")
     else:
-        summary_log.append("  < No survivors >")
+        summary_log.append("  ( No survivors )")
 
     # --- Send Summary ---
     summary_text = "\n".join(summary_log)
@@ -6698,7 +6730,7 @@ async def inventory_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"🎒 <b>Cargo Hold Status ({inv_count}/{LOOT_ITEM_CAP})</b>\n{fancy_separator}\n"
 
     if not inventory:
-        text += "  < Empty >\n  Use the 'Loot' action to find items!"
+        text += "  ( Empty )\n  Use the 'Loot' action to find items!"
     else:
         item_counts = defaultdict(int)
         for item_key in inventory: item_counts[item_key] += 1
