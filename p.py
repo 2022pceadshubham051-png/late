@@ -86,6 +86,7 @@ MAP_COLORS = {
     "team_beta": (255, 165, 2, 255),     # bold orange (distinct from red/green)
     "destroyed": (90, 80, 70, 255),
     "loot": (241, 196, 15, 255),
+    "danger_zone_tint": (255, 0, 0, 80),   # translucent red overlay for danger-zone cells
 }
 COLUMN_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -118,6 +119,20 @@ def render_map_image(game, viewer_id: Union[int, None] = None) -> io.BytesIO:
             alive_here = [uid for uid in cell_ids if game.players.get(uid, {}).get('alive')]
             cx = origin_x + c * cell_w + cell_w / 2
             cy = origin_y + r * cell_h + cell_h / 2
+
+            # --- Danger Zone tint (drawn first, under everything else) ---
+            if not game.is_in_safe_zone(r, c):
+                cell_left = origin_x + c * cell_w
+                cell_top = origin_y + r * cell_h
+                overlay = Image.new("RGBA", bg.size, (0, 0, 0, 0))
+                overlay_draw = ImageDraw.Draw(overlay)
+                overlay_draw.rectangle(
+                    [cell_left, cell_top, cell_left + cell_w, cell_top + cell_h],
+                    fill=MAP_COLORS["danger_zone_tint"],
+                    outline=(255, 0, 0, 180), width=2,
+                )
+                bg = Image.alpha_composite(bg, overlay)
+                draw = ImageDraw.Draw(bg)
 
             if not alive_here:
                 if cell_ids:  # someone died here — draw a wreck marker
@@ -4380,7 +4395,8 @@ async def start_game_phase(context: ContextTypes.DEFAULT_TYPE, game: Game):
 
     # Send the visual battle map as its own message
     map_msg = await safe_send_photo(context, chat_id, render_map_image(game),
-                                    caption=game.get_map_header_card(), parse_mode=ParseMode.HTML)
+                                    caption=game.get_map_header_card(), parse_mode=ParseMode.HTML,
+                                    reply_markup=build_dm_button(context))
     if map_msg:
         game.last_map_message_id = map_msg.message_id
 
@@ -5105,9 +5121,6 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
     chat_id = game.chat_id
     logger.info(f"Processing Day {day} operations for chat {chat_id}")
 
-    await safe_send(context, chat_id, f"⏳ Processing actions for Day {day}... Stand by, Captains!")
-    await asyncio.sleep(2) # Brief pause for effect
-
     # --- Preparation ---
     game.update_alliances() # Decrement alliance timers
     summary_log: list[str] = [f"🌐 <b>DAY {day} — ACTION REPORT</b>\n──────────────────────────"] # Start summary log
@@ -5120,8 +5133,8 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
         # Fire off a standalone, hard-to-miss alert the moment the zone shrinks —
         # relying on a line buried inside the long day-summary caption was why
         # people kept ignoring it. This goes out first, on its own.
-        await safe_send(
-            context, chat_id,
+        await safe_send_animation(
+            context, chat_id, get_random_gif('meteor'),
             build_card(
                 "⚠️ DANGER ZONE SHRINKING",
                 [zone_shrink_msg, "", f"🟥 Anyone caught outside the safe zone takes {SAFE_ZONE_DAMAGE} DMG every turn!", "🗺️ Check /map now and move to safety!"],
@@ -5147,8 +5160,9 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
     event_key, event_data = trigger_cosmic_event()
     if event_key and event_data:
         # Send a separate alert for the event itself
+        event_gif_category = 'meteor' if event_key in ('meteor_storm', 'asteroid_field') else 'event'
         await safe_send_animation(
-            context, chat_id, get_random_gif('event'),
+            context, chat_id, get_random_gif(event_gif_category),
             caption=build_card("COSMIC EVENT", [f"{event_data['emoji']} <b>{event_data['name']}</b>", event_data['desc'], "", "Effects are unfolding..."], emoji="🌌"),
             parse_mode=ParseMode.HTML
         )
@@ -5473,24 +5487,30 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
          if chat_id in games: del games[chat_id]
 
 
+def build_dm_button(context: ContextTypes.DEFAULT_TYPE) -> InlineKeyboardMarkup:
+    """Inline URL button that opens a DM with the bot — used under group-chat
+    battle/map messages so players can jump straight to issuing orders."""
+    bot_link_username = context.bot.username or BOT_USERNAME
+    return InlineKeyboardMarkup([[InlineKeyboardButton("📩 Message the Bot", url=f"https://t.me/{bot_link_username}")]])
+
+
 async def continue_next_day(context: ContextTypes.DEFAULT_TYPE, game: Game):
     """Prepares and announces the start of the next game day."""
     game.day += 1
     logger.info(f"Continuing to Day {game.day} for game in chat {game.chat_id}")
     await asyncio.sleep(3) # Short pause before next day starts
 
-    # Fancy announcement for the new day
-    next_day_text = f"""
-    ☀️ <b>Day {game.day} Dawns!</b> ☀️
+    # Day-dawn banner is folded straight into the battle-map caption below
+    # (was a separate plain message before, easy to miss/skip past).
+    day_banner = f"☀️ <b>Day {game.day} Dawns!</b> ☀️\nThe battle continues! Check your DMs to issue new orders, Captains."
 
-    The battle continues! Check your DMs to issue new orders, Captains.
-    """
-
-    await safe_send(context, game.chat_id, next_day_text, parse_mode=ParseMode.HTML)
-
-    # Send/refresh the visual battle map
-    map_msg = await safe_send_photo(context, game.chat_id, render_map_image(game),
-                                    caption=game.get_map_header_card(), parse_mode=ParseMode.HTML)
+    # Send/refresh the visual battle map, with the day banner + a DM button
+    map_msg = await safe_send_photo(
+        context, game.chat_id, render_map_image(game),
+        caption=day_banner + "\n\n" + game.get_map_header_card(),
+        parse_mode=ParseMode.HTML,
+        reply_markup=build_dm_button(context),
+    )
     if map_msg:
         game.last_map_message_id = map_msg.message_id
 
