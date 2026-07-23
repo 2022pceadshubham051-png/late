@@ -583,46 +583,42 @@ def _wm(filename: str) -> str:
     return _WM + filename.replace(" ", "%20")
 
 _FIRE_GIFS = [
-    _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHYzMjd5YWc4aXFwcDB3bjYxOGI1YXdtdXpqZmowOHYxYnlzNWUzbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/EeTwHqk6WROjXPwAuv/giphy.gif"),
-    _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExcDZ6bHJ2ZHRlOTY2cWVxNHZtNHFkcTM5dXloeDIweWhrZGJybm1uciZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/eOYcHpafrLWRIA1TfE/giphy.gif"),
+    _wm("https://t.me/shipoversemediaright/39"),
+    _wm("https://t.me/shipoversemediaright/48"),
 ]
 _SPACE_GIFS = [
-    _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExazM2dXJ0dnVqaHF6c2F1ZnF5dmNtb3FvMXl1eWx4amF0NjBpcWtjOSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/BOYwrfc46YjZGmVY14/giphy.gif"),
-    _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcHg5djBiemNpNTk2NDE1d2VyMWxmYTNuM3FicWNjNGNkOHp2ZDF2ZCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/vOeYXUOwgoqHmSg65X/giphy.gif"),
-    _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExdDRkaHJoYnk0c2ZwaXM0NjMyOXpvazdqcTRlamNldWJpMGc2dmNueSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/O6zi6Tqv3K1yqYaDDr/giphy.gif"),
+    _wm("https://t.me/shipoversemediaright/53"),
+    _wm("https://t.me/shipoversemediaright/23"),
 ]
 
 GIFS = {
     'joining': [
-        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnJ6cTF4ZjA0dWJ5a2xraTZ4c3Z3eGZqZ2tnZ2NlYTkyNzN1N243MSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/8rl6ksNWBayvLS57zw/giphy.gif"),
-        _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcDVwYXZ0OXFjdmw0b2Y3cndnb3h5ZDZ5OXlwcGFvenNzeTl3Z2g4cCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Jl5JbC6jdhaaCg9SJ6/giphy.gif"),
-        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExOWF1ZmUwaGRmcHkxZWkwdHZvNHRwYmJ3aGM4Mmlna3FvZTNyMXdpcCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/lKbahoyxsTKaXOq6C7/giphy.gif"),
-        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExc2Jkc3B0MzlrcDl6c202emZjYTd4OHM3cjd0aGM3Y3ZlNXlsanEzbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Fmbo4NMswrRtoivL5M/giphy.gif"),
+        _wm("https://t.me/shipoversemediaright/52"),
+        _wm("https://t.me/shipoversemediaright/51"),
+        _wm("https://t.me/shipoversemediaright/49"),
+        _wm("https://t.me/shipoversemediaright/42"),
     ],
     'start': [
-        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMmVybWZhd2QybXo5N2tpNm44YTdqcHcxOHprNWp0eGoxMHNwazllbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/F4pcaatrJJi634GsKo/giphy.gif"),
-        _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExdDR0YnBkbTNqeWhoMmNsczdqNHlwaW5sMDd5MnVnNWlneHQ2cmwxaiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/skl7A8hBxLt6AB2mcA/giphy.gif"),
-        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExbnRhZWo0ZzhtNG1wOWNhYnphZnppYmV6OXcxOG9mODlseGk5MDk3MyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/H33MTVHhoH0pPbtBHJ/giphy.gif"),
-        _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExNDAyYnl3d2NjbGE3ajZuZm15amJzenZ4Njh1eTJ0dXltOWI2bnJiaCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/wKRLqcSCYEhbaQzhw6/giphy.gif"),
-        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExOWprYmR6bjYzdndzanI4aTJsdHlmcWhocTJ0cHd5bnp0enc5cmtleSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Jq7pCAnWcPYgrXzRYq/giphy.gif"),
+        _wm("https://t.me/shipoversemediaright/46"),
+        _wm("https://t.me/shipoversemediaright/34"),
+        _wm("https://t.me/shipoversemediaright/28"),
     ],
     'operation': [
-        _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExdHdrNzJodHN1ZDdjbXpxZGdyeWtzZXF0MXF4Mjd5ZjB6dWN0MHExMyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/9RCrzklpWA64JqzZ3f/giphy.gif"),
-        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExNXIzNDYwZm1zczNiZXdjMHI2ZGJ4cXZnejhsaW0zeWh6NGlieXJxaSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/wGcZI7hVswmgsHWc8w/giphy.gif"),
-        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExYTBwNHB6ZnI5amNzcnVseHJ3a2R4eG5tYm9lY2tjcGQwb3ZkYmUyeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/t4e3WLf6Vw8tRPHaEO/giphy.gif"),
-        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExeTkzeWlkcTAyd3puNDdtdmtwbXhiMDhmNGF4MmtyZDZkcnV4dm1lMCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gjrPogG9sAOCe5FlOA/giphy.gif"),
+        _wm("https://t.me/shipoversemediaright/40"),
+        _wm("https://t.me/shipoversemediaright/41"),
+        _wm("https://t.me/shipoversemediaright/33"),
+        _wm("https://t.me/shipoversemediaright/32"),
     ],
     'day_summary': [
-        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExYnBiaXM5cHI4cTNtcGV5c3Y3d3ZyNG82djF3enhrZ3BpazF1OGk5YyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/oeNOwF7CU6CXn1ql6x/giphy.gif"),
-        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExcXdwdHhlYTFzbnJ5cmVydDRobWI4bGk4dTlld3Q0Z3hveWUyaWxjZiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/P9jymNfU9mz6Psq7fo/giphy.gif"),
-        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExeXN2ejdicjVvcnVlbjdha2ZpbzkzMHJwY2t1eWs3cmUyZDU4M2ZpeiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/VlejYNPZzHCLTLYdIP/giphy.gif"),
-        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExcDdpMGtyN2U5eGI5cGwxaHJha3kzN2prbXNkM2Rjczd5bG95czl6ZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Tx3Fk538Tb9uw5Fgen/giphy.gif"),
+        _wm("https://t.me/shipoversemediaright/44"),
+        _wm("https://t.me/shipoversemediaright/50"),
+        _wm("https://t.me/shipoversemediaright/39"),
+        _wm("https://t.me/shipoversemediaright/31"),
     ],
     'victory': [
-        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExaThoejI3bmtjOXA4ZmtxMWgzbzB0cDQ0enh2YzFzczh0NHluYTU1aCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/ayQwZtTrbZmYlezEBQ/giphy.gif"),
-        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2FocDZ3NzYxYWl5d2R3bGZramRvd3VvMnd5YjN3YmJsdnk5NjhtdSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/23ONZyNRrBAS3Syl8i/giphy.gif"),
-        _wm("https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHR6eHI0cGlwaTNudHBvYzdoNG1xd2ttbXE1aWt4M3hqZDFraDhpciZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/FRUKh21wWRQJu6MF7P/giphy.gif"),
-        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExaTUyNmlxMW5lbDdwd29tbno3bnRnaTBra3FlbWpoeXVxdDNvcnd6NCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/V6qtMo0Ra64RO7qwGi/giphy.gif"),
+        _wm("https://t.me/shipoversemediaright/26"),
+        _wm("https://t.me/shipoversemediaright/25"),
+        _wm("https://t.me/shipoversemediaright/4"),
     ],
     'eliminated': _FIRE_GIFS,
     'extend': [
@@ -630,15 +626,14 @@ GIFS = {
     ],
     'event': _SPACE_GIFS,
     'meteor': [
-        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZXphb2hqdjgwcGoyeXdnN3NuNjYzOGxqM3BrYWtxc3Bpc3VyMGhqMSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/DkzJAKRnfkprPgzb6y/giphy.gif"),
-        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExbWxqdnJ4bHA0aXNla3JxdzllMTJ3YmFyNWdmMjkwc3g0NjdiYXBkYSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/5tZqRHbFuhjR7FNpn5/giphy.gif"),
-        _wm("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExbmEzeGtnenlyMjdqenMwM3JoMnIweGNmcWY5ZDBmcHA0cXg2M2hyOSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/RJgPGb02D71GRILVSA/giphy.gif"),
+        _wm("https://t.me/shipoversemediaright/24"),
+        _wm("https://t.me/shipoversemediaright/23"),
+        _wm("https://t.me/shipoversemediaright/22"),
     ],
     'boost': [
-        _wm("https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExeDI1Ymd2eHFjZXlybXFtYzJsMXcyNW1hZnY5NjRtMW0wdDNjODI0ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/TFlNsHFsW3QHRxjQLA/giphy.gif"),
-        _wm("https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExcXBxMDFteHRxNGtiNGlsZ3l6cGl5dzV6a3U5b3BhbDV3MXZiZTUyeCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/UdEuidxWEgHVvOJZhl/giphy.gif"),
-        _wm("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExbWVzNGU5ZjZ6eGRmejRqc3cyaXdmaHhyNzYybHdvcTdxN3FmaDFkciZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/yJKToyVBMjXOY0RezY/giphy.gif"),
-        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZnAyMGo5YjFtNzMzMDB0ZGZqankza3k4c2lvN3k0djIwOWcybWI1MiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/RlqORiAYySnwVs3SzM/giphy.gif"),
+        _wm("https://t.me/shipoversemediaright/3"),
+        _wm("https://t.me/shipoversemediaright/2"),
+        _wm("https://t.me/shipoversemediaright/24"),
     ],
 }
 
@@ -647,17 +642,17 @@ GIFS = {
 # 🚧 TEMP PLACEHOLDERS — replace these with your own image URLs later.
 # Using a stable, publicly hotlinkable Wikimedia space image so send_photo actually works in the meantime.
 IMAGES = {
-    'start':        'https://t.me/cric77777/9909',
-    'help':         'https://t.me/cric77777/9909',
-    'rules':        'https://t.me/cric77777/9909',
+    'start':        'https://t.me/shipoversemediaright/59',
+    'help':         'https://t.me/shipoversemediaright/54',
+    'rules':        'https://t.me/shipoversemediaright/58',
     'stats_admin':  'https://t.me/cric77777/9909',
-    'mystats':      'https://t.me/cric77777/9909',
-    'leaderboard':  'https://t.me/cric77777/9909',
-    'shop':         'https://t.me/cric77777/9909',
-    'daily':        'https://t.me/cric77777/9909',
-    'achievements': 'https://t.me/cric77777/9909',
+    'mystats':      'https://t.me/shipoversemediaright/62',
+    'leaderboard':  'https://t.me/shipoversemediaright/55',
+    'shop':         'https://t.me/shipoversemediaright/57',
+    'daily':        'https://t.me/shipoversemediaright/60',
+    'achievements': 'https://t.me/shipoversemediaright/56',
     'compare':      'https://t.me/cric77777/9909',
-    'tips':         'https://t.me/cric77777/9909',
+    'tips':         'https://t.me/shipoversemediaright/61',
     'history':      'https://t.me/cric77777/9909',
     'default':      'https://t.me/cric77777/9909'
 }
