@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import random
+import re
 import sqlite3
 import io
 from datetime import datetime, timedelta
@@ -41,6 +42,7 @@ CELL_ICONS = {
     "mixed": "🟣",
     "loot": "🟡",
     "safe": "🟦",
+    "danger": "🟥",
     "destroyed": "⬛",
     "unknown": "⬜",
 }
@@ -582,58 +584,67 @@ def _wm(filename: str) -> str:
     """Builds a stable, direct-hotlink Wikimedia Commons URL for a filename (spaces -> %20)."""
     return _WM + filename.replace(" ", "%20")
 
+# 🚧 IMPORTANT: these are public t.me/<channel>/<msg_id> post links, NOT direct
+# .gif/.mp4 file URLs. Telegram's send_animation(url=...) tries to *download* the
+# URL as a file — a t.me post link returns an HTML page, not a video, so it always
+# fails with "Failed to get http url content" / "Wrong type of the web page content".
+# (The old code additionally mangled these through a Wikimedia Special:FilePath
+# wrapper, which was never valid for t.me links either.)
+# safe_send_animation() below detects the t.me/<channel>/<id> shape and uses
+# bot.copy_message() to re-post the *actual* media from that channel post instead
+# of trying to hotlink it — this is the correct/working way to reuse channel media.
 _FIRE_GIFS = [
-    _wm("https://t.me/shipoversemediaright/39"),
-    _wm("https://t.me/shipoversemediaright/48"),
+    "https://t.me/shipoversemediaright/39",
+    "https://t.me/shipoversemediaright/48",
 ]
 _SPACE_GIFS = [
-    _wm("https://t.me/shipoversemediaright/53"),
-    _wm("https://t.me/shipoversemediaright/23"),
+    "https://t.me/shipoversemediaright/53",
+    "https://t.me/shipoversemediaright/23",
 ]
 
 GIFS = {
     'joining': [
-        _wm("https://t.me/shipoversemediaright/52"),
-        _wm("https://t.me/shipoversemediaright/51"),
-        _wm("https://t.me/shipoversemediaright/49"),
-        _wm("https://t.me/shipoversemediaright/42"),
+        "https://t.me/shipoversemediaright/52",
+        "https://t.me/shipoversemediaright/51",
+        "https://t.me/shipoversemediaright/49",
+        "https://t.me/shipoversemediaright/42",
     ],
     'start': [
-        _wm("https://t.me/shipoversemediaright/46"),
-        _wm("https://t.me/shipoversemediaright/34"),
-        _wm("https://t.me/shipoversemediaright/28"),
+        "https://t.me/shipoversemediaright/46",
+        "https://t.me/shipoversemediaright/34",
+        "https://t.me/shipoversemediaright/28",
     ],
     'operation': [
-        _wm("https://t.me/shipoversemediaright/40"),
-        _wm("https://t.me/shipoversemediaright/41"),
-        _wm("https://t.me/shipoversemediaright/33"),
-        _wm("https://t.me/shipoversemediaright/32"),
+        "https://t.me/shipoversemediaright/40",
+        "https://t.me/shipoversemediaright/41",
+        "https://t.me/shipoversemediaright/33",
+        "https://t.me/shipoversemediaright/32",
     ],
     'day_summary': [
-        _wm("https://t.me/shipoversemediaright/44"),
-        _wm("https://t.me/shipoversemediaright/50"),
-        _wm("https://t.me/shipoversemediaright/39"),
-        _wm("https://t.me/shipoversemediaright/31"),
+        "https://t.me/shipoversemediaright/44",
+        "https://t.me/shipoversemediaright/50",
+        "https://t.me/shipoversemediaright/39",
+        "https://t.me/shipoversemediaright/31",
     ],
     'victory': [
-        _wm("https://t.me/shipoversemediaright/26"),
-        _wm("https://t.me/shipoversemediaright/25"),
-        _wm("https://t.me/shipoversemediaright/4"),
+        "https://t.me/shipoversemediaright/26",
+        "https://t.me/shipoversemediaright/25",
+        "https://t.me/shipoversemediaright/4",
     ],
     'eliminated': _FIRE_GIFS,
     'extend': [
-        _wm("https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExMmtyYTBlZjQ3NjEzZGltZXVlemJsdnh0YzFyYTkzZ3N3NTR4anEwdiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/6ckXK5HT7EPCuHfBum/giphy.gif"),
+        "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExMmtyYTBlZjQ3NjEzZGltZXVlemJsdnh0YzFyYTkzZ3N3NTR4anEwdiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/6ckXK5HT7EPCuHfBum/giphy.gif",
     ],
     'event': _SPACE_GIFS,
     'meteor': [
-        _wm("https://t.me/shipoversemediaright/24"),
-        _wm("https://t.me/shipoversemediaright/23"),
-        _wm("https://t.me/shipoversemediaright/22"),
+        "https://t.me/shipoversemediaright/24",
+        "https://t.me/shipoversemediaright/23",
+        "https://t.me/shipoversemediaright/22",
     ],
     'boost': [
-        _wm("https://t.me/shipoversemediaright/3"),
-        _wm("https://t.me/shipoversemediaright/2"),
-        _wm("https://t.me/shipoversemediaright/24"),
+        "https://t.me/shipoversemediaright/3",
+        "https://t.me/shipoversemediaright/2",
+        "https://t.me/shipoversemediaright/24",
     ],
 }
 
@@ -940,8 +951,45 @@ async def safe_send(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str,
         logger.error(f"❌ Unexpected Error (Text): Chat {chat_id}, Error: {e}", exc_info=True)
     return None
 
+_TME_LINK_RE = re.compile(r'^https?://t\.me/(?:c/)?([A-Za-z0-9_]+)/(\d+)/?$')
+
+def _parse_tme_post(url: str):
+    """Parses a public channel post link like https://t.me/somechannel/59 into
+    ('@somechannel', 59). Returns (None, None) if it's not that shape (e.g. a
+    real direct .gif/.mp4 URL, which should just be hotlinked normally)."""
+    m = _TME_LINK_RE.match(url.strip())
+    if not m:
+        return None, None
+    return f"@{m.group(1)}", int(m.group(2))
+
 async def safe_send_animation(context: ContextTypes.DEFAULT_TYPE, chat_id: int, animation: str, caption: str, reply_markup=None, parse_mode=None, **kwargs):
-    """Safely sends an animation (GIF), falls back to text."""
+    """Safely sends an animation. `animation` is usually a public t.me/<channel>/<id>
+    post link (not a direct file URL) — Telegram can't hotlink those with
+    send_animation(url=...) since it just fetches an HTML page, not a video, and
+    always fails with 'Failed to get http url content' / 'Wrong type of the web
+    page content'. So for that shape we instead copy_message() the real media
+    straight from the source channel post (works for any media type, GIF or
+    video, and Telegram caches the file_id after the first copy). Falls back to
+    a direct send_animation for genuine file URLs, then to plain text."""
+    channel, msg_id = _parse_tme_post(animation)
+    if channel:
+        try:
+            msg = await context.bot.copy_message(
+                chat_id=chat_id, from_chat_id=channel, message_id=msg_id,
+                caption=caption, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs
+            )
+            return msg
+        except Forbidden:
+            logger.warning(f"🚫 Blocked/Kicked: Cannot send media to {chat_id}. Falling back to text.")
+            return await safe_send(context, chat_id, caption, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+        except (BadRequest, TelegramError) as e:
+            logger.error(f"❌ Error copying media ({channel}/{msg_id}) to {chat_id}: {e}. Falling back to text.")
+            return await safe_send(context, chat_id, caption, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+        except Exception as e:
+            logger.error(f"❌ Unexpected Error (copy_message): Chat {chat_id}, Error: {e}. Falling back to text.", exc_info=True)
+            return await safe_send(context, chat_id, caption, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+
+    # Genuine direct file URL (or giphy link etc.) — send normally.
     try:
         msg = await context.bot.send_animation(
             chat_id=chat_id, animation=animation, caption=caption,
@@ -1375,9 +1423,9 @@ class Game:
         safe_zone_side = min(n, int(self.safe_zone_radius * 2) + 1) if self.safe_zone_radius != float('inf') else n
         zone_status = f"{safe_zone_side}x{safe_zone_side} Square" if self.safe_zone_radius != float('inf') else "Full Map"
         legend_lines = (
-            ["🔵 You                ↳ 🔴 Enemy", "📦 Loot              ↳ 🟩 Safe Zone", "💥 Destroyed   ↳ ❓ Unknown"]
+            ["🟢 You                ↳ 🔴 Enemy", "🟦 Safe Zone      ↳ 🟥 Danger Zone", "⬛ Destroyed   ↳ ⬜ Unknown"]
             if self.mode != 'team' else
-            ["🔵 Team Alpha  ↳ 🔴 Team Beta", "🟣 Contested   ↳ 🟡 Loot", "🟦 Safe             ↳ ⬛ Destroyed"]
+            ["🔵 Team Alpha  ↳ 🔴 Team Beta", "🟣 Contested   ↳ 🟦 Safe Zone", "🟥 Danger Zone ↳ ⬛ Destroyed"]
         )
         header = build_card(
             "ARENA INFO",
@@ -1407,7 +1455,7 @@ class Game:
             if not alive_here:
                 if cell_ids:
                     return "destroyed"
-                return "safe" if self.is_in_safe_zone(r, c) else "unknown"
+                return "safe" if self.is_in_safe_zone(r, c) else "danger"
 
             if self.mode == 'team':
                 # Colour by team, not by viewer — lets everyone tell allies from enemies at a glance
@@ -5069,8 +5117,19 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
     zone_shrink_msg = game.update_safe_zone()
     safe_zone_damage_log = []
     if zone_shrink_msg:
-        summary_log.append(zone_shrink_msg) # Add shrink message directly
-        summary_log.append(fancy_separator)
+        # Fire off a standalone, hard-to-miss alert the moment the zone shrinks —
+        # relying on a line buried inside the long day-summary caption was why
+        # people kept ignoring it. This goes out first, on its own.
+        await safe_send(
+            context, chat_id,
+            build_card(
+                "⚠️ DANGER ZONE SHRINKING",
+                [zone_shrink_msg, "", f"🟥 Anyone caught outside the safe zone takes {SAFE_ZONE_DAMAGE} DMG every turn!", "🗺️ Check /map now and move to safety!"],
+                emoji="🌀",
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+        summary_log.append(build_card("ZONE UPDATE", [zone_shrink_msg], emoji="🌀"))
 
     # Apply damage if players are outside the *new* zone radius
     for user_id, player in game.players.items():
@@ -5079,12 +5138,10 @@ async def process_day_operations(context: ContextTypes.DEFAULT_TYPE, game: Game)
             if not game.is_in_safe_zone(px, py):
                 player['hp'] -= SAFE_ZONE_DAMAGE
                 player['stats']['damage_taken'] = player['stats'].get('damage_taken', 0) + SAFE_ZONE_DAMAGE
-                safe_zone_damage_log.append(f"  🔴 {mention(user_id)} took {SAFE_ZONE_DAMAGE} DMG from the Danger Zone!")
+                safe_zone_damage_log.append(f"🟥 {mention(user_id)} took {SAFE_ZONE_DAMAGE} DMG from the Danger Zone!")
 
     if safe_zone_damage_log:
-        summary_log.append("🌀 <b>Void Pressure Alert!</b>")
-        summary_log.extend(safe_zone_damage_log)
-        summary_log.append(fancy_separator)
+        summary_log.append(build_card("🌀 VOID PRESSURE ALERT", safe_zone_damage_log, emoji="☠️"))
 
     # --- Cosmic Event ---
     event_key, event_data = trigger_cosmic_event()
